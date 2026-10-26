@@ -1,16 +1,17 @@
+import { Routes, Route } from 'react-router'
+import LandingPage from './pages/LandingPage'
+import NotFoundPage from './pages/NotFoundPage'
+import LoginPage from './features/auth/pages/LoginPage'
+import SignupPage from './features/auth/pages/SignupPage'
+
 function App() {
   return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-      <div className="text-center">
-        <h1 className="text-5xl font-bold text-yellow-400">DalChat</h1>
-        <p className="mt-3 text-gray-300">
-          Connect with fellow Dalhousie students
-        </p>
-        <button className="mt-6 px-6 py-2 rounded-lg bg-yellow-400 text-gray-900 font-semibold hover:bg-yellow-300 transition">
-          Get started
-        </button>
-      </div>
-    </div>
+    <Routes>
+      <Route path="/" element={<LandingPage />} />
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/signup" element={<SignupPage />} />
+      <Route path="*" element={<NotFoundPage />} />
+    </Routes>
   )
 }
 
