@@ -27,7 +27,7 @@ function SignupPage() {
         email: data.email,
         password: data.password,
       })
-      navigate('/login')
+      navigate('/verify-email', { state: { email: data.email } })
     } catch (error) {
       setError('root', {
         message:

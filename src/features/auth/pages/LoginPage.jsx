@@ -30,9 +30,15 @@ function LoginPage() {
       login(user)
       navigate('/chats', { replace: true })
     } catch (error) {
+      const serverError = error.response?.data
+
+      if (serverError?.code === 'EMAIL_NOT_VERIFIED') {
+        navigate('/verify-email', { state: { email: data.email } })
+        return
+      }
+
       setError('root', {
-        message:
-          error.response?.data?.message ?? 'Something went wrong. Please try again.',
+        message: serverError?.message ?? 'Something went wrong. Please try again.',
       })
     }
   }

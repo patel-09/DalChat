@@ -9,6 +9,7 @@ import ChatsPage from './features/chat/pages/ChatsPage'
 import FriendsPage from './features/friends/pages/FriendsPage'
 import DiscoverPage from './features/discover/pages/DiscoverPage'
 import ProfilePage from './features/profile/pages/ProfilePage'
+import VerifyEmailPage from './features/auth/pages/VerifyEmailPage'
 
 function App() {
   return (
@@ -17,6 +18,7 @@ function App() {
       <Route path="/" element={<LandingPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signup" element={<SignupPage />} />
+            <Route path="/verify-email" element={<VerifyEmailPage />} />
 
       {/* Logged-in pages */}
       <Route element={<ProtectedRoute />}>
