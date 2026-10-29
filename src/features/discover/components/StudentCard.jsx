@@ -24,17 +24,6 @@ function StudentCard({ student }) {
         </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-2">
-        {student.interests.map((interest) => (
-          <span
-            key={interest}
-            className="rounded-full bg-gray-800 px-2.5 py-0.5 text-xs text-gray-300"
-          >
-            {interest}
-          </span>
-        ))}
-      </div>
-
       <button className="mt-auto pt-4">
         <span className="flex items-center justify-center gap-2 rounded-lg border border-yellow-400 py-1.5 text-sm font-medium text-yellow-400 transition hover:bg-yellow-400 hover:text-gray-900">
           <UserPlus size={16} />

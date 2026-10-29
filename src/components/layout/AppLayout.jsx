@@ -45,8 +45,10 @@ function AppLayout() {
         </nav>
 
         <div className="border-t border-gray-800 pt-4">
-          <p className="truncate px-3 text-sm font-medium">{user?.name}</p>
-          <p className="truncate px-3 text-xs text-gray-400">{user?.email}</p>
+                    <p className="truncate px-3 text-sm font-medium">
+            {user?.firstName} {user?.lastName}
+          </p>
+          
           <button
             onClick={handleLogout}
             className="mt-3 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-gray-300 hover:bg-gray-800 transition"

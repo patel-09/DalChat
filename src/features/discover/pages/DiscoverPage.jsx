@@ -55,7 +55,7 @@ function DiscoverPage() {
         <input
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          placeholder="Try “Computer Science” or “Hiking”"
+          placeholder="Try “Computer Science"
           className="w-full rounded-lg border border-gray-700 bg-gray-900 py-2 pl-10 pr-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-yellow-400"
         />
       </div>

@@ -9,7 +9,8 @@ const dalEmail = z
 
 export const signupSchema = z
   .object({
-    fullName: z.string().trim().min(2, 'Enter your full name'),
+        firstName: z.string().trim().min(1, 'Enter your first name'),
+    lastName: z.string().trim().min(1, 'Enter your last name'),
     email: dalEmail,
     password: z
       .string()

@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router'
 import AuthLayout from '../components/AuthLayout'
 import TextField from '../../../components/TextField'
 import { signupSchema } from '../schemas'
+import { signupRequest } from '../api'
 
 function SignupPage() {
   const navigate = useNavigate()
@@ -11,6 +12,7 @@ function SignupPage() {
   const {
     register,
     handleSubmit,
+    setError,
     formState: { errors, isSubmitting },
   } = useForm({
     resolver: zodResolver(signupSchema),
@@ -18,9 +20,20 @@ function SignupPage() {
   })
 
   async function onSubmit(data) {
-    await new Promise((resolve) => setTimeout(resolve, 1000))
-    console.log('New account created for:', data.email)
-    navigate('/login')
+    try {
+      await signupRequest({
+        firstName: data.firstName,
+        lastName: data.lastName,
+        email: data.email,
+        password: data.password,
+      })
+      navigate('/login')
+    } catch (error) {
+      setError('root', {
+        message:
+          error.response?.data?.message ?? 'Something went wrong. Please try again.',
+      })
+    }
   }
 
   return (
@@ -29,14 +42,24 @@ function SignupPage() {
       subtitle="Join DalChat with your Dalhousie email"
     >
       <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
-        <TextField
-          label="Full name"
-          type="text"
-          placeholder="Jane Doe"
-          autoComplete="name"
-          error={errors.fullName}
-          {...register('fullName')}
-        />
+        <div className="grid grid-cols-2 gap-4">
+          <TextField
+            label="First name"
+            type="text"
+            placeholder="Jane"
+            autoComplete="given-name"
+            error={errors.firstName}
+            {...register('firstName')}
+          />
+          <TextField
+            label="Last name"
+            type="text"
+            placeholder="Doe"
+            autoComplete="family-name"
+            error={errors.lastName}
+            {...register('lastName')}
+          />
+        </div>
         <TextField
           label="Dalhousie email"
           type="email"
@@ -61,6 +84,12 @@ function SignupPage() {
           error={errors.confirmPassword}
           {...register('confirmPassword')}
         />
+
+        {errors.root && (
+          <p className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+            {errors.root.message}
+          </p>
+        )}
 
         <button
           type="submit"

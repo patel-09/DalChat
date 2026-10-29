@@ -5,6 +5,7 @@ import AuthLayout from '../components/AuthLayout'
 import TextField from '../../../components/TextField'
 import { loginSchema } from '../schemas'
 import { useAuthStore } from '../authStore'
+import { loginRequest } from '../api'
 
 function LoginPage() {
   const navigate = useNavigate()
@@ -13,6 +14,7 @@ function LoginPage() {
   const {
     register,
     handleSubmit,
+    setError,
     formState: { errors, isSubmitting },
   } = useForm({
     resolver: zodResolver(loginSchema),
@@ -20,14 +22,19 @@ function LoginPage() {
   })
 
   async function onSubmit(data) {
-    // Fake server delay (Spring Boot comes later)
-    await new Promise((resolve) => setTimeout(resolve, 1000))
-
-    login({
-      email: data.email,
-      name: data.email.split('@')[0], // "jane.doe@dal.ca" → "jane.doe"
-    })
-    navigate('/chats', { replace: true })
+    try {
+      const user = await loginRequest({
+        email: data.email,
+        password: data.password,
+      })
+      login(user)
+      navigate('/chats', { replace: true })
+    } catch (error) {
+      setError('root', {
+        message:
+          error.response?.data?.message ?? 'Something went wrong. Please try again.',
+      })
+    }
   }
 
   return (
@@ -49,6 +56,12 @@ function LoginPage() {
           error={errors.password}
           {...register('password')}
         />
+
+        {errors.root && (
+          <p className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+            {errors.root.message}
+          </p>
+        )}
 
         <button
           type="submit"
