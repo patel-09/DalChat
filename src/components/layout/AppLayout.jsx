@@ -5,7 +5,7 @@ import { House, MessageCircle, Users, Compass, User, LogOut } from 'lucide-react
 const navItems = [
   { to: '/home', label: 'Home', icon: House },
   { to: '/chats', label: 'Chats', icon: MessageCircle },
-  { to: '/friends', label: 'Friends', icon: Users },
+    { to: '/clubs', label: 'Clubs', icon: Users },
   { to: '/discover', label: 'Discover', icon: Compass },
   { to: '/profile', label: 'Profile', icon: User },
 ]
@@ -22,7 +22,7 @@ function AppLayout() {
   return (
     <div className="min-h-screen bg-gray-950 text-white md:flex">
       {/* Sidebar: only on medium screens and larger */}
-      <aside className="hidden md:flex md:w-64 md:flex-col border-r border-gray-800 bg-gray-900/60 p-4">
+            <aside className="hidden md:sticky md:top-0 md:flex md:h-screen md:w-64 md:shrink-0 md:flex-col md:self-start md:overflow-y-auto border-r border-gray-800 bg-gray-900/60 p-4">
         <h1 className="mb-8 px-3 text-2xl font-bold text-yellow-400">DalChat</h1>
 
         <nav className="flex-1 space-y-1">

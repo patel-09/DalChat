@@ -8,9 +8,10 @@ import ProtectedRoute from './features/auth/components/ProtectedRoute'
 import AppLayout from './components/layout/AppLayout'
 import HomePage from './features/home/pages/HomePage'
 import ChatsPage from './features/chat/pages/ChatsPage'
-import FriendsPage from './features/friends/pages/FriendsPage'
+import ClubsPage from './features/clubs/pages/ClubsPage'
 import DiscoverPage from './features/discover/pages/DiscoverPage'
 import ProfilePage from './features/profile/pages/ProfilePage'
+import CreateSocietyPage from './features/clubs/pages/CreateSocietyPage'
 
 function App() {
   return (
@@ -26,7 +27,8 @@ function App() {
         <Route element={<AppLayout />}>
           <Route path="/home" element={<HomePage />} />
           <Route path="/chats" element={<ChatsPage />} />
-          <Route path="/friends" element={<FriendsPage />} />
+          <Route path="/clubs" element={<ClubsPage />} />
+          <Route path="/clubs/new" element={<CreateSocietyPage />} />
           <Route path="/discover" element={<DiscoverPage />} />
           <Route path="/profile" element={<ProfilePage />} />
         </Route>

@@ -1,6 +1,7 @@
 import { http, HttpResponse, delay } from 'msw'
 import { users } from './data/users'
 import { posts } from './data/posts'
+import { clubs } from './data/clubs'
 
 // ---- A tiny fake "database" of accounts, saved in the browser ----
 const ACCOUNTS_KEY = 'dalchat-mock-accounts'
@@ -16,6 +17,16 @@ function loadAccounts() {
 
 function saveAccounts(accounts) {
   localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts))
+}
+
+const APPLICATIONS_KEY = 'dalchat-mock-society-applications'
+
+function loadApplications() {
+  try {
+    return JSON.parse(localStorage.getItem(APPLICATIONS_KEY)) ?? []
+  } catch {
+    return []
+  }
 }
 
 function generateCode() {
@@ -182,6 +193,68 @@ export const handlers = [
     return HttpResponse.json(feed)
   }),
 
+    // Clubs directory: GET /api/clubs?search=...&category=...
+  http.get('/api/clubs', async ({ request }) => {
+    await delay(600)
+
+    const url = new URL(request.url)
+    const search = (url.searchParams.get('search') ?? '').trim().toLowerCase()
+    const category = url.searchParams.get('category') ?? 'All'
+
+    const results = clubs.filter((club) => {
+      const matchesSearch =
+        club.name.toLowerCase().includes(search) ||
+        club.description.toLowerCase().includes(search)
+      const matchesCategory = category === 'All' || club.category === category
+      return matchesSearch && matchesCategory
+    })
+
+    return HttpResponse.json(results)
+  }),
+  // Society application: POST /api/clubs/applications
+  http.post('/api/clubs/applications', async ({ request }) => {
+    await delay(1000)
+
+    const form = await request.formData()
+    const name = String(form.get('name')).trim()
+    const executives = JSON.parse(form.get('executives'))
+    const members = JSON.parse(form.get('members'))
+    const proof = form.get('proof')
+
+    const applications = loadApplications()
+    const nameTaken = [...clubs, ...applications].some(
+      (club) => club.name.toLowerCase() === name.toLowerCase()
+    )
+    if (nameTaken) {
+      return HttpResponse.json(
+        { field: 'name', message: 'A society with this name already exists on DalChat' },
+        { status: 409 }
+      )
+    }
+
+    // The server checks the minimum requirements again: never trust the browser alone
+    if (executives.length < 3 || members.length < 10 || !(proof instanceof File)) {
+      return HttpResponse.json(
+        { message: 'This application does not meet the minimum requirements' },
+        { status: 400 }
+      )
+    }
+
+    const application = {
+      id: Date.now(),
+      name,
+      category: form.get('category'),
+      description: form.get('description'),
+      executives,
+      members,
+      proofFileName: proof.name,
+      status: 'PENDING_REVIEW',
+      submittedAt: new Date().toISOString(),
+    }
+    localStorage.setItem(APPLICATIONS_KEY, JSON.stringify([...applications, application]))
+
+    return HttpResponse.json({ id: application.id, status: application.status }, { status: 201 })
+  }),
   // Search students: GET /api/users?search=something
   http.get('/api/users', async ({ request }) => {
     await delay(600)
