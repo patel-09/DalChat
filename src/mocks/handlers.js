@@ -3,30 +3,41 @@ import { users } from './data/users'
 import { posts } from './data/posts'
 import { clubs } from './data/clubs'
 
-// ---- A tiny fake "database" of accounts, saved in the browser ----
+// ---- A tiny fake "database", saved in the browser ----
 const ACCOUNTS_KEY = 'dalchat-mock-accounts'
-const CODE_LIFETIME_MS = 10 * 60 * 1000 // 10 minutes
+const APPLICATIONS_KEY = 'dalchat-mock-society-applications'
+const EXECUTIVE_INVITES_KEY = 'dalchat-mock-executive-invites'
 
-function loadAccounts() {
+const CODE_LIFETIME_MS = 10 * 60 * 1000 // 10 minutes
+const INVITE_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
+
+function loadList(key) {
   try {
-    return JSON.parse(localStorage.getItem(ACCOUNTS_KEY)) ?? []
+    return JSON.parse(localStorage.getItem(key)) ?? []
   } catch {
     return []
   }
+}
+
+function saveList(key, list) {
+  localStorage.setItem(key, JSON.stringify(list))
+}
+
+function loadAccounts() {
+  return loadList(ACCOUNTS_KEY)
 }
 
 function saveAccounts(accounts) {
-  localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts))
+  saveList(ACCOUNTS_KEY, accounts)
 }
 
-const APPLICATIONS_KEY = 'dalchat-mock-society-applications'
-
-function loadApplications() {
-  try {
-    return JSON.parse(localStorage.getItem(APPLICATIONS_KEY)) ?? []
-  } catch {
-    return []
-  }
+// Is there a verified DalChat account with this email?
+function isOnDalChat(email) {
+  const target = email.trim().toLowerCase()
+  return (
+    users.some((user) => user.email === target) ||
+    loadAccounts().some((account) => account.email === target && account.verified !== false)
+  )
 }
 
 function generateCode() {
@@ -34,9 +45,31 @@ function generateCode() {
   return String(Math.floor(10000 + Math.random() * 90000))
 }
 
-function sendMockEmail(email, code) {
-  // Pretend to send an email: the code shows up in the browser console
-  console.info(`📧 [Mock email] To: ${email} | Your DalChat verification code is: ${code}`)
+// Pretend to send an email: it shows up in the browser console
+function logMockEmail({ to, subject, body }) {
+  console.info(`📧 [Mock email]\nTo: ${to}\nSubject: ${subject}\n\n${body}`)
+}
+
+function sendVerificationEmail(email, code) {
+  logMockEmail({
+    to: email,
+    subject: 'Your DalChat verification code',
+    body: `Your DalChat verification code is: ${code}\nIt expires in 10 minutes.`,
+  })
+}
+
+function sendExecutiveInviteEmail(invite) {
+  const link = `${window.location.origin}/signup?invite=${invite.token}`
+  logMockEmail({
+    to: invite.email,
+    subject: `You've been added as ${invite.role} of ${invite.societyName}`,
+    body:
+      `Hi ${invite.name},\n\n` +
+      `${invite.invitedBy} added you as ${invite.role} of "${invite.societyName}" on DalChat, ` +
+      `the app for Dalhousie students.\n\n` +
+      `Create your DalChat account with this email to accept:\n${link}\n\n` +
+      `This invite expires in 7 days.`,
+  })
 }
 
 export const handlers = [
@@ -65,7 +98,7 @@ export const handlers = [
       codeExpiresAt: Date.now() + CODE_LIFETIME_MS,
     }
     saveAccounts([...accounts, newAccount])
-    sendMockEmail(email, code)
+    sendVerificationEmail(email, code)
 
     return HttpResponse.json(
       { email, message: 'Account created. Check your email for a verification code.' },
@@ -134,7 +167,7 @@ export const handlers = [
           : a
       )
     )
-    sendMockEmail(email, code)
+    sendVerificationEmail(email, code)
 
     return HttpResponse.json({ message: 'A new code has been sent' })
   }),
@@ -172,7 +205,8 @@ export const handlers = [
       email: account.email,
     })
   }),
-    // Home feed: GET /api/feed
+
+  // Home feed: GET /api/feed
   http.get('/api/feed', async () => {
     await delay(700)
 
@@ -193,7 +227,7 @@ export const handlers = [
     return HttpResponse.json(feed)
   }),
 
-    // Clubs directory: GET /api/clubs?search=...&category=...
+  // Clubs directory: GET /api/clubs?search=...&category=...
   http.get('/api/clubs', async ({ request }) => {
     await delay(600)
 
@@ -211,52 +245,8 @@ export const handlers = [
 
     return HttpResponse.json(results)
   }),
-  // Society application: POST /api/clubs/applications
-  http.post('/api/clubs/applications', async ({ request }) => {
-    await delay(1000)
 
-    const form = await request.formData()
-    const name = String(form.get('name')).trim()
-    const executives = JSON.parse(form.get('executives'))
-    const members = JSON.parse(form.get('members'))
-    const proof = form.get('proof')
-
-    const applications = loadApplications()
-    const nameTaken = [...clubs, ...applications].some(
-      (club) => club.name.toLowerCase() === name.toLowerCase()
-    )
-    if (nameTaken) {
-      return HttpResponse.json(
-        { field: 'name', message: 'A society with this name already exists on DalChat' },
-        { status: 409 }
-      )
-    }
-
-    // The server checks the minimum requirements again: never trust the browser alone
-    if (executives.length < 3 || members.length < 10 || !(proof instanceof File)) {
-      return HttpResponse.json(
-        { message: 'This application does not meet the minimum requirements' },
-        { status: 400 }
-      )
-    }
-
-    const application = {
-      id: Date.now(),
-      name,
-      category: form.get('category'),
-      description: form.get('description'),
-      executives,
-      members,
-      proofFileName: proof.name,
-      status: 'PENDING_REVIEW',
-      submittedAt: new Date().toISOString(),
-    }
-    localStorage.setItem(APPLICATIONS_KEY, JSON.stringify([...applications, application]))
-
-    return HttpResponse.json({ id: application.id, status: application.status }, { status: 201 })
-  }),
-
-    // Member search and suggestions: GET /api/clubs/member-suggestions?search=...&topic=...
+  // Member search and suggestions: GET /api/clubs/member-suggestions?search=...&topic=...
   http.get('/api/clubs/member-suggestions', async ({ request }) => {
     await delay(400)
 
@@ -287,7 +277,6 @@ export const handlers = [
       }
     }
 
-    // Typing in the search box: filter everyone by name or program
     if (search) {
       const results = users.filter(
         (user) =>
@@ -297,10 +286,90 @@ export const handlers = [
       return HttpResponse.json(results.map(toResult))
     }
 
-    // Empty search box: suggest students whose interests match the society
     const suggested = users.filter((user) => matchingInterests(user).length > 0)
     return HttpResponse.json(suggested.map(toResult))
   }),
+
+  // Does this email have a DalChat account? GET /api/users/lookup?email=...
+  http.get('/api/users/lookup', async ({ request }) => {
+    await delay(300)
+    const email = (new URL(request.url).searchParams.get('email') ?? '').trim().toLowerCase()
+
+    // Only a yes/no answer: never reveal names or other details
+    return HttpResponse.json({ onDalChat: isOnDalChat(email) })
+  }),
+
+  // Society application: POST /api/clubs/applications
+  http.post('/api/clubs/applications', async ({ request }) => {
+    await delay(1000)
+
+    const form = await request.formData()
+    const name = String(form.get('name')).trim()
+    const executives = JSON.parse(form.get('executives'))
+    const members = JSON.parse(form.get('members'))
+    const proof = form.get('proof')
+
+    const applications = loadList(APPLICATIONS_KEY)
+    const nameTaken = [...clubs, ...applications].some(
+      (club) => club.name.toLowerCase() === name.toLowerCase()
+    )
+    if (nameTaken) {
+      return HttpResponse.json(
+        { field: 'name', message: 'A society with this name already exists on DalChat' },
+        { status: 409 }
+      )
+    }
+
+    // The server checks the minimum requirements again: never trust the browser alone
+    if (executives.length < 3 || members.length < 10 || !(proof instanceof File)) {
+      return HttpResponse.json(
+        { message: 'This application does not meet the minimum requirements' },
+        { status: 400 }
+      )
+    }
+
+    const application = {
+      id: Date.now(),
+      name,
+      category: form.get('category'),
+      description: form.get('description'),
+      executives,
+      members,
+      proofFileName: proof.name,
+      status: 'PENDING_REVIEW',
+      submittedAt: new Date().toISOString(),
+    }
+    saveList(APPLICATIONS_KEY, [...applications, application])
+
+    // Email invites to executives who don't have a DalChat account yet
+    const president = executives.find((exec) => exec.role === 'President')
+    const newInvites = executives
+      .filter((exec) => exec.role !== 'President' && !isOnDalChat(exec.email))
+      .map((exec) => ({
+        token: crypto.randomUUID(),
+        email: exec.email.trim().toLowerCase(),
+        name: exec.name,
+        role: exec.role,
+        applicationId: application.id,
+        societyName: name,
+        invitedBy: president.name,
+        status: 'PENDING',
+        expiresAt: Date.now() + INVITE_LIFETIME_MS,
+      }))
+
+    newInvites.forEach(sendExecutiveInviteEmail)
+    saveList(EXECUTIVE_INVITES_KEY, [...loadList(EXECUTIVE_INVITES_KEY), ...newInvites])
+
+    return HttpResponse.json(
+      {
+        id: application.id,
+        status: application.status,
+        emailInvitesSentTo: newInvites.map((invite) => invite.email),
+      },
+      { status: 201 }
+    )
+  }),
+
   // Search students: GET /api/users?search=something
   http.get('/api/users', async ({ request }) => {
     await delay(600)

@@ -6,11 +6,12 @@ export async function getClubs({ search, category }) {
   return response.data
 }
 
-export function useClubs({ search, category }) {
+export function useClubs({ search, category, enabled = true }) {
   return useQuery({
     queryKey: ['clubs', search, category],
     queryFn: () => getClubs({ search, category }),
     placeholderData: keepPreviousData,
+    enabled,
   })
 }
 
@@ -32,5 +33,22 @@ export function useMemberSuggestions({ search, topic, enabled }) {
     queryFn: () => getMemberSuggestions({ search, topic }),
     enabled,
     placeholderData: keepPreviousData,
+  })
+}
+
+export async function lookupUserByEmail(email) {
+  const response = await apiClient.get('/users/lookup', { params: { email } })
+  return response.data
+}
+
+export function useEmailLookup(email) {
+  const normalized = email.trim().toLowerCase()
+  const isCompleteDalEmail = /^[^\s@]+@dal\.ca$/.test(normalized)
+
+  return useQuery({
+    queryKey: ['email-lookup', normalized],
+    queryFn: () => lookupUserByEmail(normalized),
+    enabled: isCompleteDalEmail,
+    staleTime: 60_000,
   })
 }

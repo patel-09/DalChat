@@ -8,10 +8,11 @@ export async function searchStudents(search) {
 }
 
 // 2. A hook that components use to get the data
-export function useStudents(search) {
+export function useStudents(search, { enabled = true } = {}) {
   return useQuery({
     queryKey: ['students', search],
     queryFn: () => searchStudents(search),
     placeholderData: keepPreviousData,
+    enabled,
   })
 }

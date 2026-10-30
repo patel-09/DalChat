@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { CheckCircle2, ExternalLink, Search, X } from 'lucide-react'
+import { CheckCircle2, ExternalLink, Mail, Search, X } from 'lucide-react'
 import TextField from '../../../components/TextField'
 import CheckboxField from '../../../components/CheckboxField'
 import StepIndicator from '../components/StepIndicator'
 import MemberInviteCard from '../components/MemberInviteCard'
+import ExecutiveEmailStatus from '../components/ExecutiveEmailStatus'
 import { useAuthStore } from '../../auth/authStore'
 import { createSocietyRequest, useMemberSuggestions } from '../api'
 import {
@@ -90,6 +91,7 @@ function CreateSocietyPage() {
   const [draft] = useState(loadDraft)
   const [step, setStep] = useState(0)
   const [submitted, setSubmitted] = useState(false)
+  const [emailInvitesSentTo, setEmailInvitesSentTo] = useState([])
 
   // Members step
   const [memberSearch, setMemberSearch] = useState('')
@@ -221,8 +223,9 @@ function CreateSocietyPage() {
     formData.append('proof', formValues.proof[0])
 
     try {
-      await createSocietyRequest(formData)
+      const result = await createSocietyRequest(formData)
       clearDraft()
+      setEmailInvitesSentTo(result.emailInvitesSentTo ?? [])
       setSubmitted(true)
     } catch (error) {
       const serverError = error.response?.data
@@ -409,6 +412,7 @@ function CreateSocietyPage() {
                 {...register('vpEmail')}
               />
             </div>
+            <ExecutiveEmailStatus email={values.vpEmail} />
           </div>
 
           <div>
@@ -427,6 +431,7 @@ function CreateSocietyPage() {
                 {...register('treasurerEmail')}
               />
             </div>
+            <ExecutiveEmailStatus email={values.treasurerEmail} />
           </div>
         </div>
       )
@@ -544,6 +549,24 @@ function CreateSocietyPage() {
         <p className="mt-2 text-gray-400">
           We'll check your DSU ratification and let you know once {values.name} is live on DalChat.
         </p>
+
+        {emailInvitesSentTo.length > 0 && (
+          <div className="mt-6 rounded-lg border border-gray-800 bg-gray-900 p-4 text-left text-sm">
+            <p className="flex items-center gap-1.5 font-medium text-white">
+              <Mail size={16} />
+              Email invites sent
+            </p>
+            <ul className="mt-2 list-disc space-y-0.5 pl-5 text-gray-300">
+              {emailInvitesSentTo.map((email) => (
+                <li key={email}>{email}</li>
+              ))}
+            </ul>
+            <p className="mt-2 text-gray-400">
+              They need to join DalChat with that email to accept their role.
+            </p>
+          </div>
+        )}
+
         <Link
           to="/clubs"
           className="mt-6 inline-block rounded-lg bg-yellow-400 px-5 py-2 font-semibold text-gray-900 hover:bg-yellow-300"
