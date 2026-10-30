@@ -568,7 +568,7 @@ function CreateSocietyPage() {
         )}
 
         <Link
-          to="/clubs"
+          to="/discover?tab=clubs"
           className="mt-6 inline-block rounded-lg bg-yellow-400 px-5 py-2 font-semibold text-gray-900 hover:bg-yellow-300"
         >
           Back to Clubs

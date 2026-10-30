@@ -72,6 +72,79 @@ function sendExecutiveInviteEmail(invite) {
   })
 }
 
+// ---- Chats ----
+const CONVERSATIONS_KEY = 'dalchat-mock-conversations'
+const MESSAGES_KEY = 'dalchat-mock-messages'
+
+function minutesAgoISO(minutes) {
+  return new Date(Date.now() - minutes * 60 * 1000).toISOString()
+}
+
+// TEMPORARY: the real backend will read the user from a login token
+function getCurrentUserId(request) {
+  const id = request.headers.get('X-User-Id')
+  return id ? Number(id) : null
+}
+
+function getPersonName(id) {
+  const student = users.find((user) => user.id === id)
+  if (student) return student.name
+  const account = loadAccounts().find((a) => a.id === id)
+  return account ? `${account.firstName} ${account.lastName}` : 'DalChat user'
+}
+
+function conversationTitle(conversation, userId) {
+  if (conversation.type === 'group') return conversation.name
+  const otherId = conversation.participantIds.find((id) => id !== userId)
+  return getPersonName(otherId)
+}
+
+function findMemberConversation(conversationId, userId) {
+  const conversation = loadList(CONVERSATIONS_KEY).find((c) => c.id === conversationId)
+  if (!conversation || !conversation.participantIds.includes(userId)) return null
+  return conversation
+}
+
+// Give each new user a few sample chats so the page isn't empty
+function ensureSeedChats(userId) {
+  const conversations = loadList(CONVERSATIONS_KEY)
+  if (conversations.some((c) => c.participantIds.includes(userId))) return
+
+  const chatId = (n) => `${userId}-c${n}`
+
+  const newConversations = [
+    { id: chatId(1), type: 'direct', name: null, participantIds: [userId, 1], lastReadAt: {} },
+    { id: chatId(2), type: 'group', name: 'CSCI Study Group', participantIds: [userId, 1, 6, 10], lastReadAt: {} },
+    { id: chatId(3), type: 'direct', name: null, participantIds: [userId, 8], lastReadAt: {} },
+    { id: chatId(4), type: 'direct', name: null, participantIds: [userId, 7], lastReadAt: { [userId]: new Date().toISOString() } },
+  ]
+
+  // [chat number, sender id, text, minutes ago]
+  const seedMessages = [
+    [1, 1, 'Hey! Are you coming to the study group tomorrow?', 130],
+    [1, userId, 'Yes! What time again?', 125],
+    [1, 1, '6pm at Killam, 3rd floor 📚', 120],
+    [2, 6, 'Did anyone finish question 3 of the assignment?', 95],
+    [2, 10, 'Almost, the recursion part is tricky', 90],
+    [2, userId, 'I can share my notes tonight', 85],
+    [2, 1, 'Lifesaver 🙌', 80],
+    [3, 8, 'We still need 2 players for Saturday soccer, you in?', 30],
+    [4, 7, 'Thanks for the soup recipe!', 1500],
+    [4, userId, 'Anytime 😄', 1490],
+  ]
+
+  const newMessages = seedMessages.map(([chat, senderId, content, minutesAgo], index) => ({
+    id: `${userId}-m${index + 1}`,
+    conversationId: chatId(chat),
+    senderId,
+    content,
+    createdAt: minutesAgoISO(minutesAgo),
+  }))
+
+  saveList(CONVERSATIONS_KEY, [...conversations, ...newConversations])
+  saveList(MESSAGES_KEY, [...loadList(MESSAGES_KEY), ...newMessages])
+}
+
 export const handlers = [
   // Sign up: POST /api/auth/signup
   http.post('/api/auth/signup', async ({ request }) => {
@@ -368,6 +441,144 @@ export const handlers = [
       },
       { status: 201 }
     )
+  }),
+
+    // Chat list: GET /api/conversations
+  http.get('/api/conversations', async ({ request }) => {
+    await delay(500)
+    const userId = getCurrentUserId(request)
+    if (!userId) {
+      return HttpResponse.json({ message: 'Please log in' }, { status: 401 })
+    }
+
+    ensureSeedChats(userId)
+    const messages = loadList(MESSAGES_KEY)
+
+    const result = loadList(CONVERSATIONS_KEY)
+      .filter((c) => c.participantIds.includes(userId))
+      .map((c) => {
+        const chatMessages = messages.filter((m) => m.conversationId === c.id)
+        const last = chatMessages.at(-1)
+        const lastReadAt = c.lastReadAt[userId] ?? '1970-01-01T00:00:00.000Z'
+        const unreadCount = chatMessages.filter(
+          (m) => m.senderId !== userId && m.createdAt > lastReadAt
+        ).length
+
+        return {
+          id: c.id,
+          type: c.type,
+          name: conversationTitle(c, userId),
+          memberCount: c.participantIds.length,
+          lastMessage: last
+            ? {
+                content: last.content,
+                createdAt: last.createdAt,
+                isMine: last.senderId === userId,
+                senderName: getPersonName(last.senderId),
+              }
+            : null,
+          unreadCount,
+        }
+      })
+      .sort((a, b) =>
+        (b.lastMessage?.createdAt ?? '').localeCompare(a.lastMessage?.createdAt ?? '')
+      )
+
+    return HttpResponse.json(result)
+  }),
+
+  // One chat and its messages: GET /api/conversations/:conversationId/messages
+  http.get('/api/conversations/:conversationId/messages', async ({ request, params }) => {
+    await delay(400)
+    const userId = getCurrentUserId(request)
+    const conversation = findMemberConversation(params.conversationId, userId)
+
+    // Only members can read a chat
+    if (!conversation) {
+      return HttpResponse.json({ message: 'Chat not found' }, { status: 404 })
+    }
+
+    const messages = loadList(MESSAGES_KEY)
+      .filter((m) => m.conversationId === conversation.id)
+      .map((m) => ({
+        id: m.id,
+        content: m.content,
+        createdAt: m.createdAt,
+        sender: { id: m.senderId, name: getPersonName(m.senderId) },
+        isMine: m.senderId === userId,
+      }))
+
+    return HttpResponse.json({
+      conversation: {
+        id: conversation.id,
+        type: conversation.type,
+        name: conversationTitle(conversation, userId),
+        members: conversation.participantIds.map((id) => ({ id, name: getPersonName(id) })),
+      },
+      messages,
+    })
+  }),
+
+  // Send a message: POST /api/conversations/:conversationId/messages
+  http.post('/api/conversations/:conversationId/messages', async ({ request, params }) => {
+    await delay(500)
+    const userId = getCurrentUserId(request)
+    const conversation = findMemberConversation(params.conversationId, userId)
+
+    if (!conversation) {
+      return HttpResponse.json({ message: 'Chat not found' }, { status: 404 })
+    }
+
+    const { content } = await request.json()
+    const text = String(content ?? '').trim()
+    if (!text || text.length > 2000) {
+      return HttpResponse.json(
+        { message: 'Messages must be between 1 and 2000 characters' },
+        { status: 400 }
+      )
+    }
+
+    const message = {
+      id: crypto.randomUUID(),
+      conversationId: conversation.id,
+      senderId: userId,
+      content: text,
+      createdAt: new Date().toISOString(),
+    }
+    saveList(MESSAGES_KEY, [...loadList(MESSAGES_KEY), message])
+
+    return HttpResponse.json(
+      {
+        id: message.id,
+        content: message.content,
+        createdAt: message.createdAt,
+        sender: { id: userId, name: getPersonName(userId) },
+        isMine: true,
+      },
+      { status: 201 }
+    )
+  }),
+
+  // Mark a chat as read: POST /api/conversations/:conversationId/read
+  http.post('/api/conversations/:conversationId/read', async ({ request, params }) => {
+    await delay(150)
+    const userId = getCurrentUserId(request)
+    const conversation = findMemberConversation(params.conversationId, userId)
+
+    if (!conversation) {
+      return HttpResponse.json({ message: 'Chat not found' }, { status: 404 })
+    }
+
+    saveList(
+      CONVERSATIONS_KEY,
+      loadList(CONVERSATIONS_KEY).map((c) =>
+        c.id === conversation.id
+          ? { ...c, lastReadAt: { ...c.lastReadAt, [userId]: new Date().toISOString() } }
+          : c
+      )
+    )
+
+    return new HttpResponse(null, { status: 204 })
   }),
 
   // Search students: GET /api/users?search=something
