@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useNavigate } from 'react-router'
 import { useAuthStore } from '../../features/auth/authStore'
 import { House, MessageCircle, Users, Compass, User, LogOut } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
 
 const navItems = [
   { to: '/home', label: 'Home', icon: House },
@@ -13,9 +14,10 @@ function AppLayout() {
   const user = useAuthStore((state) => state.user)
   const logout = useAuthStore((state) => state.logout)
   const navigate = useNavigate()
-
+    const queryClient = useQueryClient()
   function handleLogout() {
     logout()
+    queryClient.clear() // forget this user's cached data
     navigate('/login', { replace: true })
   }
 

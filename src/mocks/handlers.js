@@ -144,7 +144,69 @@ function ensureSeedChats(userId) {
   saveList(CONVERSATIONS_KEY, [...conversations, ...newConversations])
   saveList(MESSAGES_KEY, [...loadList(MESSAGES_KEY), ...newMessages])
 }
+// ---- Profile and requests ----
+const REQUESTS_KEY = 'dalchat-mock-requests'
 
+function getCurrentAccount(request) {
+  const userId = getCurrentUserId(request)
+  return loadAccounts().find((account) => account.id === userId) ?? null
+}
+
+// Never send the password back to the browser
+function toProfile(account) {
+  return {
+    id: account.id,
+    firstName: account.firstName,
+    lastName: account.lastName,
+    email: account.email,
+    program: account.program ?? '',
+    year: account.year ?? '',
+    bio: account.bio ?? '',
+  }
+}
+
+function createRequest({ recipientEmail, type, role = null, societyName, invitedBy }) {
+  return {
+    id: crypto.randomUUID(),
+    recipientEmail: recipientEmail.trim().toLowerCase(),
+    type, // 'EXECUTIVE_ROLE' or 'MEMBERSHIP'
+    role,
+    societyName,
+    invitedBy,
+    status: 'PENDING',
+    createdAt: new Date().toISOString(),
+  }
+}
+
+// Give each user two sample requests so the page has something to show
+function ensureSeedRequests(email) {
+  const requests = loadList(REQUESTS_KEY)
+  if (requests.some((r) => r.recipientEmail === email)) return
+
+  const seeds = [
+    {
+      ...createRequest({
+        recipientEmail: email,
+        type: 'EXECUTIVE_ROLE',
+        role: 'Vice President',
+        societyName: 'Debate Society',
+        invitedBy: 'Omar Haddad',
+      }),
+      createdAt: minutesAgoISO(45),
+    },
+    {
+      ...createRequest({
+        recipientEmail: email,
+        type: 'MEMBERSHIP',
+        societyName: 'Robotics Club',
+        invitedBy: 'Priya Patel',
+      }),
+      createdAt: minutesAgoISO(300),
+    },
+  ]
+
+  saveList(REQUESTS_KEY, [...requests, ...seeds])
+}
 export const handlers = [
   // Sign up: POST /api/auth/signup
   http.post('/api/auth/signup', async ({ request }) => {
@@ -433,6 +495,34 @@ export const handlers = [
     newInvites.forEach(sendExecutiveInviteEmail)
     saveList(EXECUTIVE_INVITES_KEY, [...loadList(EXECUTIVE_INVITES_KEY), ...newInvites])
 
+    
+    // In-app requests for people already on DalChat (shown on their Profile page)
+    const executiveEmails = executives.map((exec) => exec.email.trim().toLowerCase())
+    const appRequests = [
+      ...executives
+        .filter((exec) => exec.role !== 'President' && isOnDalChat(exec.email))
+        .map((exec) =>
+          createRequest({
+            recipientEmail: exec.email,
+            type: 'EXECUTIVE_ROLE',
+            role: exec.role,
+            societyName: name,
+            invitedBy: president.name,
+          })
+        ),
+      ...members
+        .filter((email) => !executiveEmails.includes(email) && isOnDalChat(email))
+        .map((email) =>
+          createRequest({
+            recipientEmail: email,
+            type: 'MEMBERSHIP',
+            societyName: name,
+            invitedBy: president.name,
+          })
+        ),
+    ]
+    saveList(REQUESTS_KEY, [...loadList(REQUESTS_KEY), ...appRequests])
+
     return HttpResponse.json(
       {
         id: application.id,
@@ -579,6 +669,103 @@ export const handlers = [
     )
 
     return new HttpResponse(null, { status: 204 })
+  }),
+
+    // My profile: GET /api/profile
+  http.get('/api/profile', async ({ request }) => {
+    await delay(400)
+    const account = getCurrentAccount(request)
+    if (!account) {
+      return HttpResponse.json({ message: 'Please log in' }, { status: 401 })
+    }
+    return HttpResponse.json(toProfile(account))
+  }),
+
+  // Update my profile: PUT /api/profile
+  http.put('/api/profile', async ({ request }) => {
+    await delay(600)
+    const account = getCurrentAccount(request)
+    if (!account) {
+      return HttpResponse.json({ message: 'Please log in' }, { status: 401 })
+    }
+
+    const body = await request.json()
+    const firstName = String(body.firstName ?? '').trim()
+    const lastName = String(body.lastName ?? '').trim()
+    const program = String(body.program ?? '').trim()
+    const year = String(body.year ?? '')
+    const bio = String(body.bio ?? '').trim()
+
+    // The server checks the rules again: never trust the browser alone
+    if (
+      !firstName ||
+      !lastName ||
+      firstName.length > 40 ||
+      lastName.length > 40 ||
+      program.length > 60 ||
+      bio.length > 160
+    ) {
+      return HttpResponse.json({ message: 'Some profile details are invalid' }, { status: 400 })
+    }
+
+    const updated = { ...account, firstName, lastName, program, year, bio }
+    saveAccounts(loadAccounts().map((a) => (a.id === account.id ? updated : a)))
+
+    return HttpResponse.json(toProfile(updated))
+  }),
+
+  // My pending requests: GET /api/profile/requests
+  http.get('/api/profile/requests', async ({ request }) => {
+    await delay(400)
+    const account = getCurrentAccount(request)
+    if (!account) {
+      return HttpResponse.json({ message: 'Please log in' }, { status: 401 })
+    }
+
+    ensureSeedRequests(account.email)
+
+    const pending = loadList(REQUESTS_KEY)
+      .filter((r) => r.recipientEmail === account.email && r.status === 'PENDING')
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+
+    return HttpResponse.json(pending)
+  }),
+
+  // Answer a request: POST /api/profile/requests/:requestId/accept (or /decline)
+  http.post('/api/profile/requests/:requestId/:action', async ({ request, params }) => {
+    await delay(500)
+    const account = getCurrentAccount(request)
+    if (!account) {
+      return HttpResponse.json({ message: 'Please log in' }, { status: 401 })
+    }
+    if (!['accept', 'decline'].includes(params.action)) {
+      return HttpResponse.json({ message: 'Unknown action' }, { status: 400 })
+    }
+
+    const requests = loadList(REQUESTS_KEY)
+    // Only the person a request was sent to can answer it
+    const target = requests.find(
+      (r) => r.id === params.requestId && r.recipientEmail === account.email
+    )
+    if (!target) {
+      return HttpResponse.json({ message: 'Request not found' }, { status: 404 })
+    }
+    if (target.status !== 'PENDING') {
+      return HttpResponse.json(
+        { message: 'You have already answered this request' },
+        { status: 409 }
+      )
+    }
+
+    const status = params.action === 'accept' ? 'ACCEPTED' : 'DECLINED'
+    saveList(
+      REQUESTS_KEY,
+      requests.map((r) =>
+        r.id === target.id ? { ...r, status, respondedAt: new Date().toISOString() } : r
+      )
+    )
+
+    return HttpResponse.json({ id: target.id, status })
   }),
 
   // Search students: GET /api/users?search=something

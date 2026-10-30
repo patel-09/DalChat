@@ -7,6 +7,9 @@ export const useAuthStore = create(
       user: null,
       login: (user) => set({ user }),
       logout: () => set({ user: null }),
+      // Merge changes into the logged-in user (e.g. after editing the profile)
+      updateUser: (changes) =>
+        set((state) => ({ user: state.user ? { ...state.user, ...changes } : null })),
     }),
     { name: 'dalchat-auth' }
   )
