@@ -28,7 +28,7 @@ function LoginPage() {
         password: data.password,
       })
       login(user)
-      navigate('/chats', { replace: true })
+            navigate('/home', { replace: true })
     } catch (error) {
       const serverError = error.response?.data
 
@@ -49,7 +49,7 @@ function LoginPage() {
         <TextField
           label="Dalhousie email"
           type="email"
-          placeholder="jane.doe@dal.ca"
+          placeholder="Your Email"
           autoComplete="email"
           error={errors.email}
           {...register('email')}

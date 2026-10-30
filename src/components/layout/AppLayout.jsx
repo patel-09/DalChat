@@ -1,14 +1,14 @@
 import { NavLink, Outlet, useNavigate } from 'react-router'
-import { MessageCircle, Users, Compass, User, LogOut } from 'lucide-react'
 import { useAuthStore } from '../../features/auth/authStore'
+import { House, MessageCircle, Users, Compass, User, LogOut } from 'lucide-react'
 
 const navItems = [
+  { to: '/home', label: 'Home', icon: House },
   { to: '/chats', label: 'Chats', icon: MessageCircle },
   { to: '/friends', label: 'Friends', icon: Users },
   { to: '/discover', label: 'Discover', icon: Compass },
   { to: '/profile', label: 'Profile', icon: User },
 ]
-
 function AppLayout() {
   const user = useAuthStore((state) => state.user)
   const logout = useAuthStore((state) => state.logout)

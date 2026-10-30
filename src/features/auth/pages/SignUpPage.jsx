@@ -63,7 +63,7 @@ function SignupPage() {
         <TextField
           label="Dalhousie email"
           type="email"
-          placeholder="jane.doe@dal.ca"
+          placeholder="Your Email"
           autoComplete="email"
           error={errors.email}
           {...register('email')}

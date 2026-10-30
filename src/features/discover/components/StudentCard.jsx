@@ -1,13 +1,5 @@
 import { UserPlus } from 'lucide-react'
-
-function getInitials(name) {
-  return name
-    .split(' ')
-    .map((part) => part[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase()
-}
+import { getInitials } from '../../../lib/getInitials'
 
 function StudentCard({ student }) {
   return (

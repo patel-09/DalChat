@@ -1,5 +1,6 @@
 import { http, HttpResponse, delay } from 'msw'
 import { users } from './data/users'
+import { posts } from './data/posts'
 
 // ---- A tiny fake "database" of accounts, saved in the browser ----
 const ACCOUNTS_KEY = 'dalchat-mock-accounts'
@@ -159,6 +160,26 @@ export const handlers = [
       lastName: account.lastName,
       email: account.email,
     })
+  }),
+    // Home feed: GET /api/feed
+  http.get('/api/feed', async () => {
+    await delay(700)
+
+    const feed = posts
+      .map((post) => {
+        const author = users.find((user) => user.id === post.authorId)
+        return {
+          id: post.id,
+          content: post.content,
+          createdAt: post.createdAt,
+          likeCount: post.likeCount,
+          commentCount: post.commentCount,
+          author: { id: author.id, name: author.name, program: author.program },
+        }
+      })
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+
+    return HttpResponse.json(feed)
   }),
 
   // Search students: GET /api/users?search=something
