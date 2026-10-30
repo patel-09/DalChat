@@ -255,6 +255,52 @@ export const handlers = [
 
     return HttpResponse.json({ id: application.id, status: application.status }, { status: 201 })
   }),
+
+    // Member search and suggestions: GET /api/clubs/member-suggestions?search=...&topic=...
+  http.get('/api/clubs/member-suggestions', async ({ request }) => {
+    await delay(400)
+
+    const url = new URL(request.url)
+    const search = (url.searchParams.get('search') ?? '').trim().toLowerCase()
+    const topicWords = (url.searchParams.get('topic') ?? '')
+      .toLowerCase()
+      .split(/\W+/)
+      .filter((word) => word.length > 2)
+
+    function matchingInterests(user) {
+      return user.interests.filter((interest) =>
+        interest
+          .toLowerCase()
+          .split(/\W+/)
+          .some((word) => topicWords.includes(word))
+      )
+    }
+
+    function toResult(user) {
+      return {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        program: user.program,
+        year: user.year,
+        matchedInterests: matchingInterests(user),
+      }
+    }
+
+    // Typing in the search box: filter everyone by name or program
+    if (search) {
+      const results = users.filter(
+        (user) =>
+          user.name.toLowerCase().includes(search) ||
+          user.program.toLowerCase().includes(search)
+      )
+      return HttpResponse.json(results.map(toResult))
+    }
+
+    // Empty search box: suggest students whose interests match the society
+    const suggested = users.filter((user) => matchingInterests(user).length > 0)
+    return HttpResponse.json(suggested.map(toResult))
+  }),
   // Search students: GET /api/users?search=something
   http.get('/api/users', async ({ request }) => {
     await delay(600)

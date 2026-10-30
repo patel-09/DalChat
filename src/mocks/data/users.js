@@ -7,4 +7,8 @@ export const users = [
   { id: 6, name: 'Ethan Wright', email: 'ethan.wright@dal.ca', program: 'Computer Science', year: 1, interests: ['Gaming', 'Web development'] },
   { id: 7, name: 'Hana Kim', email: 'hana.kim@dal.ca', program: 'Nursing', year: 3, interests: ['Yoga', 'Cooking'] },
   { id: 8, name: 'Omar Haddad', email: 'omar.haddad@dal.ca', program: 'Economics', year: 4, interests: ['Debate', 'Soccer', 'Coffee'] },
+    { id: 9, name: 'Daniel Okafor', email: 'daniel.okafor@dal.ca', program: 'Kinesiology', year: 2, interests: ['Soccer', 'Running'] },
+  { id: 10, name: 'Maya Singh', email: 'maya.singh@dal.ca', program: 'Computer Science', year: 3, interests: ['Soccer', 'Chess'] },
+  { id: 11, name: 'Lucas Fontaine', email: 'lucas.fontaine@dal.ca', program: 'Engineering', year: 1, interests: ['Soccer', 'Hockey'] },
+  { id: 12, name: 'Grace Liu', email: 'grace.liu@dal.ca', program: 'Commerce', year: 4, interests: ['Badminton', 'Soccer'] },
 ]

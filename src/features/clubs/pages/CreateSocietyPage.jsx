@@ -1,16 +1,16 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { CheckCircle2, ExternalLink } from 'lucide-react'
+import { CheckCircle2, ExternalLink, Search, X } from 'lucide-react'
 import TextField from '../../../components/TextField'
 import CheckboxField from '../../../components/CheckboxField'
 import StepIndicator from '../components/StepIndicator'
+import MemberInviteCard from '../components/MemberInviteCard'
 import { useAuthStore } from '../../auth/authStore'
-import { createSocietyRequest } from '../api'
+import { createSocietyRequest, useMemberSuggestions } from '../api'
 import {
   createSocietySchema,
-  parseEmails,
   MIN_MEMBERS,
   MAX_DESCRIPTION_LENGTH,
   MAX_PROOF_SIZE_MB,
@@ -19,17 +19,50 @@ import {
 } from '../createSocietySchema'
 
 const STEPS = ['Ratification', 'Details', 'Executives', 'Members', 'Review']
+const MEMBERS_STEP = 3
 
-// Which fields belong to each step
+// Which form fields belong to each step (Members uses the invite list instead)
 const STEP_FIELDS = [
   ['isRatified', 'proof'],
   ['name', 'category', 'description'],
   ['vpName', 'vpEmail', 'treasurerName', 'treasurerEmail'],
-  ['members'],
+  [],
   ['confirmAccurate', 'agreeGuidelines'],
 ]
 
 const LAST_STEP = STEPS.length - 1
+
+// ---- Draft autosave ----
+const DRAFT_KEY = 'dalchat-society-draft'
+
+const EMPTY_VALUES = {
+  isRatified: false,
+  name: '',
+  category: '',
+  description: '',
+  vpName: '',
+  vpEmail: '',
+  treasurerName: '',
+  treasurerEmail: '',
+  confirmAccurate: false,
+  agreeGuidelines: false,
+}
+
+function loadDraft() {
+  try {
+    return JSON.parse(sessionStorage.getItem(DRAFT_KEY))
+  } catch {
+    return null
+  }
+}
+
+function clearDraft() {
+  try {
+    sessionStorage.removeItem(DRAFT_KEY)
+  } catch {
+    // Storage can be unavailable (e.g. private mode)
+  }
+}
 
 const fieldClass =
   'mt-1 w-full rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-yellow-400'
@@ -54,8 +87,14 @@ function ReviewRow({ label, children, onEdit }) {
 
 function CreateSocietyPage() {
   const user = useAuthStore((state) => state.user)
+  const [draft] = useState(loadDraft)
   const [step, setStep] = useState(0)
   const [submitted, setSubmitted] = useState(false)
+
+  // Members step
+  const [memberSearch, setMemberSearch] = useState('')
+  const [invited, setInvited] = useState(draft?.invited ?? [])
+  const [membersError, setMembersError] = useState('')
 
   const {
     register,
@@ -68,32 +107,63 @@ function CreateSocietyPage() {
   } = useForm({
     resolver: zodResolver(createSocietySchema),
     mode: 'onTouched',
-    defaultValues: {
-      isRatified: false,
-      name: '',
-      category: '',
-      description: '',
-      vpName: '',
-      vpEmail: '',
-      treasurerName: '',
-      treasurerEmail: '',
-      members: '',
-      confirmAccurate: false,
-      agreeGuidelines: false,
-    },
+    defaultValues: { ...EMPTY_VALUES, ...draft?.values },
   })
 
   const values = watch()
 
-  // Everyone in the society: the 3 executives plus pasted members, no duplicates
+  // Save everything except the file (browsers can't store files)
+  const draftJson = JSON.stringify({
+    values: Object.fromEntries(
+      Object.entries(values).filter(([key]) => key !== 'proof')
+    ),
+    invited,
+  })
+
+  useEffect(() => {
+    if (submitted) return
+    try {
+      sessionStorage.setItem(DRAFT_KEY, draftJson)
+    } catch {
+      // Storage can be unavailable (e.g. private mode); the form still works
+    }
+  }, [draftJson, submitted])
+
+  const hasDraft = Boolean(draft?.values?.name || draft?.invited?.length)
+
+  const {
+    data: peopleResults = [],
+    isPending: isPeoplePending,
+    isError: isPeopleError,
+  } = useMemberSuggestions({
+    search: memberSearch,
+    topic: `${values.name} ${values.description}`,
+    enabled: step === MEMBERS_STEP,
+  })
+
+  // Everyone in the society: the 3 executives plus invited students, no duplicates
   function getAllMemberEmails(formValues) {
-    const executiveEmails = [user.email, formValues.vpEmail, formValues.treasurerEmail]
+    const emails = [
+      user.email,
+      formValues.vpEmail,
+      formValues.treasurerEmail,
+      ...invited.map((person) => person.email),
+    ]
       .map((email) => email.trim().toLowerCase())
       .filter(Boolean)
-    return [...new Set([...executiveEmails, ...parseEmails(formValues.members)])]
+    return [...new Set(emails)]
   }
 
   const memberCount = getAllMemberEmails(values).length
+
+  function toggleInvite(person) {
+    setMembersError('')
+    setInvited((current) =>
+      current.some((p) => p.id === person.id)
+        ? current.filter((p) => p.id !== person.id)
+        : [...current, person]
+    )
+  }
 
   // Checks that compare several fields, which Zod can't do one step at a time
   function passesExtraChecks(stepIndex) {
@@ -114,12 +184,12 @@ function CreateSocietyPage() {
       }
     }
 
-    if (stepIndex === 3) {
+    if (stepIndex === MEMBERS_STEP) {
       const total = getAllMemberEmails(formValues).length
       if (total < MIN_MEMBERS) {
-        setError('members', {
-          message: `You need at least ${MIN_MEMBERS} members in total. You have ${total}.`,
-        })
+        setMembersError(
+          `You need at least ${MIN_MEMBERS} members in total. You have ${total}.`
+        )
         return false
       }
     }
@@ -128,7 +198,8 @@ function CreateSocietyPage() {
   }
 
   async function goNext() {
-    const isValid = await trigger(STEP_FIELDS[step])
+    const fields = STEP_FIELDS[step]
+    const isValid = fields.length > 0 ? await trigger(fields) : true
     if (!isValid || !passesExtraChecks(step)) return
     setStep(step + 1)
   }
@@ -151,6 +222,7 @@ function CreateSocietyPage() {
 
     try {
       await createSocietyRequest(formData)
+      clearDraft()
       setSubmitted(true)
     } catch (error) {
       const serverError = error.response?.data
@@ -165,17 +237,64 @@ function CreateSocietyPage() {
     }
   }
 
+  function renderMemberResults() {
+    if (isPeoplePending) {
+      return (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div key={index} className="h-[70px] animate-pulse rounded-xl bg-gray-900" />
+          ))}
+        </div>
+      )
+    }
+
+    if (isPeopleError) {
+      return <p className="text-red-400">Couldn't load students. Please try again.</p>
+    }
+
+    const people = peopleResults.filter((person) => person.email !== user.email)
+
+    if (people.length === 0) {
+      return (
+        <p className="text-gray-400">
+          {memberSearch
+            ? `No students match "${memberSearch}".`
+            : 'No suggestions yet. Try searching by name or program.'}
+        </p>
+      )
+    }
+
+    return (
+      <div className="grid gap-3 sm:grid-cols-2">
+        {people.map((person) => (
+          <MemberInviteCard
+            key={person.id}
+            person={person}
+            isInvited={invited.some((p) => p.id === person.id)}
+            onToggle={toggleInvite}
+          />
+        ))}
+      </div>
+    )
+  }
+
   function renderStep() {
     if (step === 0) {
       return (
         <div className="space-y-5">
+          {hasDraft && (
+            <p className="rounded-lg border border-yellow-400/40 bg-yellow-400/10 px-3 py-2 text-sm text-yellow-300">
+              We restored your saved progress. Re-attach your DSU file, then click Next to continue.
+            </p>
+          )}
+
           <div className="rounded-xl border border-gray-800 bg-gray-900/60 p-4">
             <p className="font-semibold">Before you start, your society needs:</p>
             <ul className="mt-3 list-disc space-y-1.5 pl-5 text-sm text-gray-300">
               <li>Official ratification with the Dalhousie Student Union (DSU) for {RATIFICATION_TERM}</li>
               <li>Your DSU ratification confirmation email, as a PDF, PNG or JPG (max {MAX_PROOF_SIZE_MB} MB)</li>
               <li>3 executives with @dal.ca emails: President (you), Vice President and Treasurer</li>
-              <li>At least {MIN_MEMBERS} members in total with @dal.ca emails, including executives</li>
+              <li>At least {MIN_MEMBERS} members in total, including executives</li>
               <li>A name that isn't already used by another society on DalChat</li>
             </ul>
             <p className="mt-3 text-sm text-gray-400">
@@ -222,7 +341,7 @@ function CreateSocietyPage() {
         <div className="space-y-4">
           <TextField
             label="Society name"
-            placeholder="e.g. Chess Society"
+            placeholder="e.g. Soccer Society"
             error={errors.name}
             {...register('name')}
           />
@@ -313,19 +432,55 @@ function CreateSocietyPage() {
       )
     }
 
-    if (step === 3) {
+    if (step === MEMBERS_STEP) {
       return (
-        <div className="space-y-3">
+        <div className="space-y-4">
           <p className="text-sm text-gray-400">
-            Add your members' Dal emails, one per line. Your 3 executives are counted automatically.
+            Invite students to join. Your 3 executives count toward the {MIN_MEMBERS}-member minimum.
           </p>
-          <textarea
-            rows={10}
-            placeholder={'jane.doe@dal.ca\nsam.lee@dal.ca'}
-            {...register('members')}
-            className={`${fieldClass} font-mono text-sm`}
-          />
-          {errors.members && <p className="text-sm text-red-400">{errors.members.message}</p>}
+
+          <div className="relative">
+            <Search
+              size={18}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500"
+            />
+            <input
+              value={memberSearch}
+              onChange={(event) => setMemberSearch(event.target.value)}
+              placeholder="Search students by name or program"
+              className="w-full rounded-lg border border-gray-700 bg-gray-900 py-2 pl-10 pr-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-yellow-400"
+            />
+          </div>
+
+          {invited.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {invited.map((person) => (
+                <span
+                  key={person.id}
+                  className="flex items-center gap-1 rounded-full bg-gray-800 py-1 pl-3 pr-2 text-sm text-gray-200"
+                >
+                  {person.name}
+                  <button
+                    type="button"
+                    onClick={() => toggleInvite(person)}
+                    aria-label={`Cancel invite for ${person.name}`}
+                    className="rounded-full p-0.5 text-gray-400 hover:bg-gray-700 hover:text-white"
+                  >
+                    <X size={14} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+
+          <p className="text-sm font-semibold text-gray-300">
+            {memberSearch ? 'Search results' : 'Suggested for your society'}
+          </p>
+
+          {renderMemberResults()}
+
+          {membersError && <p className="text-sm text-red-400">{membersError}</p>}
+
           <p
             className={`text-sm font-medium ${
               memberCount >= MIN_MEMBERS ? 'text-green-400' : 'text-gray-400'
@@ -356,8 +511,8 @@ function CreateSocietyPage() {
             <br />
             Treasurer: {values.treasurerName}
           </ReviewRow>
-          <ReviewRow label="Members" onEdit={() => setStep(3)}>
-            {memberCount} members
+          <ReviewRow label="Members" onEdit={() => setStep(MEMBERS_STEP)}>
+            {memberCount} members ({invited.length} invited)
           </ReviewRow>
         </dl>
 
@@ -434,6 +589,7 @@ function CreateSocietyPage() {
           ) : (
             <Link
               to="/clubs"
+              onClick={clearDraft}
               className="rounded-lg border border-gray-700 px-4 py-2 text-gray-300 hover:bg-gray-800"
             >
               Cancel

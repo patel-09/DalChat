@@ -10,15 +10,6 @@ export const SOCIETY_CATEGORIES = ['Academic', 'Cultural', 'Sports', 'Arts', 'Te
 
 const ALLOWED_PROOF_TYPES = ['application/pdf', 'image/png', 'image/jpeg']
 
-// Turns pasted text into a clean list of unique emails
-export function parseEmails(text) {
-  const emails = text
-    .split(/[\s,]+/)
-    .map((email) => email.trim().toLowerCase())
-    .filter(Boolean)
-  return [...new Set(emails)]
-}
-
 const dalEmail = z
   .string()
   .trim()
@@ -64,16 +55,7 @@ export const createSocietySchema = z.object({
   treasurerName: z.string().trim().min(2, 'Enter their full name'),
   treasurerEmail: dalEmail,
 
-  // Step 4: Members
-  members: z.string().superRefine((text, ctx) => {
-    const invalid = parseEmails(text).filter((email) => !email.endsWith('@dal.ca'))
-    if (invalid.length > 0) {
-      ctx.addIssue({
-        code: 'custom',
-        message: `These aren't @dal.ca emails: ${invalid.join(', ')}`,
-      })
-    }
-  }),
+  // Step 4 (Members) is handled by the page's invite list, not this schema
 
   // Step 5: Review
   confirmAccurate: z.boolean().refine((value) => value, 'Please confirm this'),
