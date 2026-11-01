@@ -1,9 +1,23 @@
-import { Award, Users } from 'lucide-react'
+import { Award, UserPlus, Users } from 'lucide-react'
 import { formatTimeAgo } from '../../../lib/formatTimeAgo'
 import { useProfileRequests, useRespondToRequest } from '../api'
 
+const REQUEST_ICONS = {
+  EXECUTIVE_ROLE: Award,
+  MEMBERSHIP: Users,
+  FRIEND: UserPlus,
+}
+
 function RequestText({ request }) {
   const strong = 'font-semibold text-white'
+
+  if (request.type === 'FRIEND') {
+    return (
+      <>
+        <span className={strong}>{request.invitedBy}</span> sent you a friend request
+      </>
+    )
+  }
 
   if (request.type === 'EXECUTIVE_ROLE') {
     return (
@@ -57,7 +71,7 @@ function RequestsList() {
     return (
       <ul className="divide-y divide-gray-800">
         {requests.map((request) => {
-          const Icon = request.type === 'EXECUTIVE_ROLE' ? Award : Users
+          const Icon = REQUEST_ICONS[request.type] ?? Users
           const isBusy = respond.isPending && respond.variables?.id === request.id
 
           return (

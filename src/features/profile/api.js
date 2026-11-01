@@ -56,6 +56,8 @@ export function useRespondToRequest() {
     mutationFn: respondToRequest,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profile-requests'] })
+      // Accepting a friend request changes the buttons on Discover
+      queryClient.invalidateQueries({ queryKey: ['students'] })
     },
   })
 }
