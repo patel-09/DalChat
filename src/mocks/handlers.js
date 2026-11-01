@@ -11,6 +11,7 @@ const CONVERSATIONS_KEY = 'dalchat-mock-conversations'
 const MESSAGES_KEY = 'dalchat-mock-messages'
 const REQUESTS_KEY = 'dalchat-mock-requests'
 const FRIENDSHIPS_KEY = 'dalchat-mock-friendships'
+const POSTS_KEY = 'dalchat-mock-posts'
 
 const CODE_LIFETIME_MS = 10 * 60 * 1000 // 10 minutes
 const INVITE_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
@@ -274,6 +275,25 @@ function getFriendStatus(myEmail, otherEmail) {
   return 'NONE'
 }
 
+// ==== Posts ====
+// Turn a stored post into what the browser receives
+function toPostResponse(post, viewerId) {
+  const author = loadAccounts().find((a) => a.id === post.authorId)
+  return {
+    id: post.id,
+    content: post.content,
+    createdAt: post.createdAt,
+    likeCount: post.likeCount,
+    commentCount: post.commentCount,
+    author: {
+      id: post.authorId,
+      name: author ? `${author.firstName} ${author.lastName}` : 'DalChat user',
+      program: author?.program ?? '',
+    },
+    isMine: post.authorId === viewerId,
+  }
+}
+
 // ==== Endpoints ====
 export const handlers = [
   // ---------- Auth ----------
@@ -414,24 +434,96 @@ export const handlers = [
   // ---------- Home ----------
 
   // Home feed: GET /api/feed
-  http.get('/api/feed', async () => {
+    // Home feed: GET /api/feed
+  http.get('/api/feed', async ({ request }) => {
     await delay(700)
+    const account = getCurrentAccount(request)
 
-    const feed = posts
-      .map((post) => {
-        const author = users.find((user) => user.id === post.authorId)
-        return {
-          id: post.id,
-          content: post.content,
-          createdAt: post.createdAt,
-          likeCount: post.likeCount,
-          commentCount: post.commentCount,
-          author: { id: author.id, name: author.name, program: author.program },
-        }
-      })
-      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    // Sample posts from the mock students
+    const samplePosts = posts.map((post) => {
+      const author = users.find((user) => user.id === post.authorId)
+      return {
+        id: post.id,
+        content: post.content,
+        createdAt: post.createdAt,
+        likeCount: post.likeCount,
+        commentCount: post.commentCount,
+        author: { id: author.id, name: author.name, program: author.program },
+        isMine: false,
+      }
+    })
+
+    // Real posts: mine, plus posts from my friends
+    const realPosts = account
+      ? loadList(POSTS_KEY)
+          .filter((post) => {
+            if (post.authorId === account.id) return true
+            const author = loadAccounts().find((a) => a.id === post.authorId)
+            return author && getFriendStatus(account.email, author.email) === 'FRIENDS'
+          })
+          .map((post) => toPostResponse(post, account.id))
+      : []
+
+    const feed = [...samplePosts, ...realPosts].sort(
+      (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+    )
 
     return HttpResponse.json(feed)
+  }),
+
+  // Create a post: POST /api/posts
+  http.post('/api/posts', async ({ request }) => {
+    await delay(600)
+    const account = getCurrentAccount(request)
+    if (!account) {
+      return HttpResponse.json({ message: 'Please log in' }, { status: 401 })
+    }
+
+    const { content } = await request.json()
+    const text = String(content ?? '').trim()
+    if (!text || text.length > 500) {
+      return HttpResponse.json(
+        { message: 'Posts must be between 1 and 500 characters' },
+        { status: 400 }
+      )
+    }
+
+    const post = {
+      id: crypto.randomUUID(),
+      authorId: account.id,
+      content: text,
+      createdAt: new Date().toISOString(),
+      likeCount: 0,
+      commentCount: 0,
+    }
+    saveList(POSTS_KEY, [...loadList(POSTS_KEY), post])
+
+    return HttpResponse.json(toPostResponse(post, account.id), { status: 201 })
+  }),
+
+  // Delete a post: DELETE /api/posts/:postId
+  http.delete('/api/posts/:postId', async ({ request, params }) => {
+    await delay(400)
+    const account = getCurrentAccount(request)
+    if (!account) {
+      return HttpResponse.json({ message: 'Please log in' }, { status: 401 })
+    }
+
+    const allPosts = loadList(POSTS_KEY)
+    const post = allPosts.find((p) => p.id === params.postId)
+    if (!post) {
+      return HttpResponse.json({ message: 'Post not found' }, { status: 404 })
+    }
+    // Only the author can delete a post
+    if (post.authorId !== account.id) {
+      return HttpResponse.json(
+        { message: 'You can only delete your own posts' },
+        { status: 403 }
+      )
+    }
+
+    saveList(POSTS_KEY, allPosts.filter((p) => p.id !== post.id))
+    return new HttpResponse(null, { status: 204 })
   }),
 
   // ---------- Clubs ----------
@@ -766,6 +858,7 @@ export const handlers = [
       return HttpResponse.json({ message: 'Please log in' }, { status: 401 })
     }
 
+
     const body = await request.json()
     const firstName = String(body.firstName ?? '').trim()
     const lastName = String(body.lastName ?? '').trim()
@@ -789,6 +882,22 @@ export const handlers = [
     saveAccounts(loadAccounts().map((a) => (a.id === account.id ? updated : a)))
 
     return HttpResponse.json(toProfile(updated))
+  }),
+
+    // My posts: GET /api/profile/posts
+  http.get('/api/profile/posts', async ({ request }) => {
+    await delay(400)
+    const account = getCurrentAccount(request)
+    if (!account) {
+      return HttpResponse.json({ message: 'Please log in' }, { status: 401 })
+    }
+
+    const myPosts = loadList(POSTS_KEY)
+      .filter((post) => post.authorId === account.id)
+      .map((post) => toPostResponse(post, account.id))
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+
+    return HttpResponse.json(myPosts)
   }),
 
   // My pending requests: GET /api/profile/requests

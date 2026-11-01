@@ -7,6 +7,7 @@ import { useProfile } from '../api'
 import ProfileCard from '../components/ProfileCard'
 import EditProfileForm from '../components/EditProfileForm'
 import RequestsList from '../components/RequestsList'
+import MyPosts from '../components/MyPosts'
 
 function ProfilePage() {
   const { data: profile, isPending, isError, refetch } = useProfile()
@@ -49,6 +50,8 @@ function ProfilePage() {
       {renderProfile()}
 
       <RequestsList />
+
+      <MyPosts />
 
       <section className="rounded-xl border border-gray-800 bg-gray-900/60 p-6">
         <h2 className="text-lg font-bold">Account</h2>

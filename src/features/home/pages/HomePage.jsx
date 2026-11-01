@@ -1,9 +1,11 @@
 import { Link } from 'react-router'
 import { useFeed } from '../api'
 import PostCard from '../components/PostCard'
+import CreatePost from '../components/CreatePost'
 
 function HomePage() {
-  const { data: posts = [], isPending, isError, refetch } = useFeed()
+  const { data, isPending, isError, refetch } = useFeed()
+  const posts = Array.isArray(data) ? data : []
 
   function renderFeed() {
     if (isPending) {
@@ -54,7 +56,10 @@ function HomePage() {
   }
 
   return (
-  <div className="mx-auto max-w-4xl">{renderFeed()}</div>
+    <div className="mx-auto max-w-4xl space-y-6">
+      <CreatePost />
+      {renderFeed()}
+    </div>
   )
 }
 
