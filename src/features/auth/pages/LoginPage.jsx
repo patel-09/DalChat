@@ -15,11 +15,14 @@ function LoginPage() {
     register,
     handleSubmit,
     setError,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm({
     resolver: zodResolver(loginSchema),
     mode: 'onTouched',
   })
+
+  const typedEmail = watch('email') ?? ''
 
   async function onSubmit(data) {
     try {
@@ -28,7 +31,7 @@ function LoginPage() {
         password: data.password,
       })
       login(user)
-            navigate('/home', { replace: true })
+      navigate('/home', { replace: true })
     } catch (error) {
       const serverError = error.response?.data
 
@@ -49,19 +52,31 @@ function LoginPage() {
         <TextField
           label="Dalhousie email"
           type="email"
-          placeholder="Your Email"
+          placeholder="jane.doe@dal.ca"
           autoComplete="email"
           error={errors.email}
           {...register('email')}
         />
-        <TextField
-          label="Password"
-          type="password"
-          placeholder="Your password"
-          autoComplete="current-password"
-          error={errors.password}
-          {...register('password')}
-        />
+
+        <div>
+          <TextField
+            label="Password"
+            type="password"
+            placeholder="Your password"
+            autoComplete="current-password"
+            error={errors.password}
+            {...register('password')}
+          />
+          <div className="mt-2 text-right">
+            <Link
+              to="/forgot-password"
+              state={{ email: typedEmail.trim().toLowerCase() }}
+              className="text-sm text-yellow-400 hover:underline"
+            >
+              Forgot password?
+            </Link>
+          </div>
+        </div>
 
         {errors.root && (
           <p className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-400">

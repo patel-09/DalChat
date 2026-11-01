@@ -12,6 +12,7 @@ import DiscoverPage from './features/discover/pages/DiscoverPage'
 import ProfilePage from './features/profile/pages/ProfilePage'
 import CreateSocietyPage from './features/clubs/pages/CreateSocietyPage'
 import RequestsPage from './features/profile/pages/RequestsPage'
+import ForgotPasswordPage from './features/auth/pages/ForgotPasswordPage'
 function App() {
   return (
     <Routes>
@@ -26,11 +27,12 @@ function App() {
         <Route element={<AppLayout />}>
           <Route path="/home" element={<HomePage />} />
           <Route path="/chats" element={<ChatsPage />} />
-                    <Route path="/chats/:conversationId" element={<ChatsPage />} />
+          <Route path="/chats/:conversationId" element={<ChatsPage />} />
           <Route path="/clubs" element={<CreateSocietyPage />} />
           <Route path="/discover" element={<DiscoverPage />} />
           <Route path="/profile" element={<ProfilePage />} />
-                    <Route path="/profile/requests" element={<RequestsPage />} />
+          <Route path="/profile/requests" element={<RequestsPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         </Route>
       </Route>
 

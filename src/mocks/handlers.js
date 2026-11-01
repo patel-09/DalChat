@@ -14,6 +14,7 @@ const POSTS_KEY = 'dalchat-mock-posts'
 
 const CODE_LIFETIME_MS = 10 * 60 * 1000 // 10 minutes
 const INVITE_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
+const MAX_RESET_ATTEMPTS = 5
 
 function loadList(key) {
   try {
@@ -65,7 +66,15 @@ function sendVerificationEmail(email, code) {
     body: `Your DalChat verification code is: ${code}\nIt expires in 10 minutes.`,
   })
 }
-
+function sendPasswordResetEmail(email, code) {
+  logMockEmail({
+    to: email,
+    subject: 'Reset your DalChat password',
+    body:
+      `Your DalChat password reset code is: ${code}\n` +
+      `It expires in 10 minutes. If you didn't ask to reset your password, you can ignore this email.`,
+  })
+}
 function sendExecutiveInviteEmail(invite) {
   const link = `${window.location.origin}/signup?invite=${invite.token}`
   logMockEmail({
@@ -383,6 +392,110 @@ export const handlers = [
       lastName: account.lastName,
       email: account.email,
     })
+  }),
+
+  
+  // Forgot password: POST /api/auth/forgot-password
+  http.post('/api/auth/forgot-password', async ({ request }) => {
+    await delay(800)
+    const { email } = await request.json()
+    const target = String(email ?? '').trim().toLowerCase()
+    const accounts = loadAccounts()
+    const account = accounts.find((a) => a.email === target)
+
+    if (account) {
+      const code = generateCode()
+      saveAccounts(
+        accounts.map((a) =>
+          a.email === target
+            ? {
+                ...a,
+                resetCode: code,
+                resetCodeExpiresAt: Date.now() + CODE_LIFETIME_MS,
+                resetAttempts: 0,
+              }
+            : a
+        )
+      )
+      sendPasswordResetEmail(target, code)
+    }
+
+    // Same answer whether or not the account exists,
+    // so this can't be used to find out who has an account
+    return HttpResponse.json({
+      message: 'If an account exists for this email, a reset code has been sent.',
+    })
+  }),
+
+  // Reset password: POST /api/auth/reset-password
+  http.post('/api/auth/reset-password', async ({ request }) => {
+    await delay(800)
+    const { email, code, password } = await request.json()
+    const target = String(email ?? '').trim().toLowerCase()
+    const accounts = loadAccounts()
+    const account = accounts.find((a) => a.email === target)
+
+    if (!account || !account.resetCode) {
+      return HttpResponse.json(
+        { field: 'code', message: 'This code is invalid or has expired. Request a new one.' },
+        { status: 400 }
+      )
+    }
+    if (Date.now() > account.resetCodeExpiresAt) {
+      return HttpResponse.json(
+        { field: 'code', message: 'This code has expired. Request a new one.' },
+        { status: 410 }
+      )
+    }
+    if ((account.resetAttempts ?? 0) >= MAX_RESET_ATTEMPTS) {
+      return HttpResponse.json(
+        { field: 'code', message: 'Too many wrong attempts. Request a new code.' },
+        { status: 429 }
+      )
+    }
+    if (account.resetCode !== code) {
+      saveAccounts(
+        accounts.map((a) =>
+          a.email === target ? { ...a, resetAttempts: (a.resetAttempts ?? 0) + 1 } : a
+        )
+      )
+      return HttpResponse.json(
+        { field: 'code', message: 'Incorrect code. Please try again.' },
+        { status: 400 }
+      )
+    }
+
+    // The server checks the password rules again: never trust the browser alone
+    const isStrong =
+      typeof password === 'string' &&
+      password.length >= 8 &&
+      /[A-Z]/.test(password) &&
+      /[0-9]/.test(password)
+    if (!isStrong) {
+      return HttpResponse.json(
+        { message: 'Password must be at least 8 characters, with an uppercase letter and a number' },
+        { status: 400 }
+      )
+    }
+
+    saveAccounts(
+      accounts.map((a) =>
+        a.email === target
+          ? {
+              ...a,
+              password,
+              verified: true, // receiving the code proves they own this email
+              verificationCode: null,
+              codeExpiresAt: null,
+              resetCode: null,
+              resetCodeExpiresAt: null,
+              resetAttempts: 0,
+            }
+          : a
+      )
+    )
+
+    return HttpResponse.json({ message: 'Password updated' })
   }),
 
   // ---------- Home and posts ----------
