@@ -3,13 +3,17 @@ package ca.dalchat.auth;
 import java.time.Duration;
 import java.util.Locale;
 
+import ca.dalchat.auth.dto.ForgotPasswordRequest;
 import ca.dalchat.auth.dto.LoginRequest;
 import ca.dalchat.auth.dto.LoginResponse;
 import ca.dalchat.auth.dto.MessageResponse;
 import ca.dalchat.auth.dto.ResendCodeRequest;
+import ca.dalchat.auth.dto.ResetPasswordRequest;
 import ca.dalchat.auth.dto.SignupRequest;
 import ca.dalchat.auth.dto.SignupResponse;
 import ca.dalchat.auth.dto.VerifyEmailRequest;
+import ca.dalchat.auth.dto.VerifyResetCodeRequest;
+import ca.dalchat.auth.dto.VerifyResetCodeResponse;
 import ca.dalchat.common.ApiException;
 import ca.dalchat.email.EmailSender;
 import ca.dalchat.user.User;
@@ -24,6 +28,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class AuthService {
 
     private static final Duration VERIFICATION_CODE_LIFETIME = Duration.ofMinutes(10);
+    private static final Duration RESET_CODE_LIFETIME = Duration.ofMinutes(10);
+    private static final Duration RESET_TOKEN_LIFETIME = Duration.ofMinutes(15);
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
@@ -116,6 +122,57 @@ public class AuthService {
         return new LoginResponse(tokenService.createToken(user), UserResponse.from(user));
     }
 
+    // ---------- Forgot password: 1. send a code ----------
+
+    @Transactional
+    public MessageResponse forgotPassword(ForgotPasswordRequest request) {
+        userRepository.findByEmail(normalizeEmail(request.email())).ifPresent(user -> {
+            String code = codeService.issueCode(user, CodePurpose.PASSWORD_RESET, RESET_CODE_LIFETIME);
+            emailSender.send(user.getEmail(),
+                    "Reset your DalChat password",
+                    "Your DalChat password reset code is: " + code + "\n"
+                            + "It expires in 10 minutes. If you didn't ask to reset your password, "
+                            + "you can ignore this email.");
+        });
+
+        // Same answer whether or not the account exists,
+        // so this can't be used to find out who has an account
+        return new MessageResponse("If an account exists for this email, a reset code has been sent.");
+    }
+
+    // ---------- Forgot password: 2. check the code ----------
+
+    @Transactional(noRollbackFor = ApiException.class)
+    public VerifyResetCodeResponse verifyResetCode(VerifyResetCodeRequest request) {
+        User user = userRepository.findByEmail(normalizeEmail(request.email()))
+                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST,
+                        "This code is invalid or has expired. Request a new one."));
+
+        codeService.verifyCode(user, CodePurpose.PASSWORD_RESET, request.code());
+
+        String resetToken = codeService.issueToken(user, CodePurpose.PASSWORD_RESET_TOKEN, RESET_TOKEN_LIFETIME);
+        return new VerifyResetCodeResponse(resetToken);
+    }
+
+    // ---------- Forgot password: 3. set the new password ----------
+
+    @Transactional
+    public MessageResponse resetPassword(ResetPasswordRequest request) {
+        User user = userRepository.findByEmail(normalizeEmail(request.email()))
+                .orElseThrow(AuthService::resetSessionExpired);
+
+        boolean tokenIsValid = codeService.consumeToken(
+                user, CodePurpose.PASSWORD_RESET_TOKEN, request.resetToken());
+        if (!tokenIsValid) {
+            throw resetSessionExpired();
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(request.password()));
+        user.setEmailVerified(true); // receiving the code proves they own this email
+
+        return new MessageResponse("Password updated");
+    }
+
     // ---------- Helpers ----------
 
     private void sendVerificationCode(User user) {
@@ -123,6 +180,11 @@ public class AuthService {
         emailSender.send(user.getEmail(),
                 "Your DalChat verification code",
                 "Your DalChat verification code is: " + code + "\nIt expires in 10 minutes.");
+    }
+
+    private static ApiException resetSessionExpired() {
+        return new ApiException(HttpStatus.BAD_REQUEST,
+                "Your reset session has expired. Please start again.", "RESET_SESSION_EXPIRED", null);
     }
 
     // "  Jane.Doe@DAL.ca " becomes "jane.doe@dal.ca"
