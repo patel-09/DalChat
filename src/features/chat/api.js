@@ -91,3 +91,20 @@ export function useMarkConversationRead() {
     },
   })
 }
+
+export async function openDirectChatRequest(userId) {
+  const response = await apiClient.post('/conversations/direct', { userId })
+  return response.data
+}
+
+export function useOpenDirectChat() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: openDirectChatRequest,
+    // A new chat may have been created, so refresh the chat list
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['conversations'] })
+    },
+  })
+}

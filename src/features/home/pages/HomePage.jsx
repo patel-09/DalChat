@@ -1,4 +1,3 @@
-import { Link } from 'react-router'
 import { useFeed } from '../api'
 import PostCard from '../components/PostCard'
 import CreatePost from '../components/CreatePost'
@@ -35,13 +34,10 @@ function HomePage() {
     if (posts.length === 0) {
       return (
         <div className="rounded-xl border border-gray-800 bg-gray-900/60 p-8 text-center">
-          <p className="font-semibold">No posts yet</p>
+                   <p className="font-semibold">No posts yet</p>
           <p className="mt-1 text-gray-400">
-            When your friends post something, it will show up here.
+            Be the first to share something with Dal students.
           </p>
-          <Link to="/discover" className="mt-4 inline-block text-yellow-400 hover:underline">
-            Find friends on Discover
-          </Link>
         </div>
       )
     }

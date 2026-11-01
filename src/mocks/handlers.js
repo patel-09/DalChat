@@ -10,7 +10,6 @@ const EXECUTIVE_INVITES_KEY = 'dalchat-mock-executive-invites'
 const CONVERSATIONS_KEY = 'dalchat-mock-conversations'
 const MESSAGES_KEY = 'dalchat-mock-messages'
 const REQUESTS_KEY = 'dalchat-mock-requests'
-const FRIENDSHIPS_KEY = 'dalchat-mock-friendships'
 const POSTS_KEY = 'dalchat-mock-posts'
 
 const CODE_LIFETIME_MS = 10 * 60 * 1000 // 10 minutes
@@ -176,20 +175,12 @@ function ensureSeedChats(userId) {
   saveList(MESSAGES_KEY, [...loadList(MESSAGES_KEY), ...newMessages])
 }
 
-// ==== Requests (society roles, memberships, friends) ====
-function createRequest({
-  recipientEmail,
-  type,
-  role = null,
-  societyName = null,
-  invitedBy,
-  senderEmail = null,
-}) {
+// ==== Requests (society roles and memberships) ====
+function createRequest({ recipientEmail, type, role = null, societyName, invitedBy }) {
   return {
     id: crypto.randomUUID(),
     recipientEmail: recipientEmail.trim().toLowerCase(),
-    senderEmail: senderEmail ? senderEmail.trim().toLowerCase() : null,
-    type, // 'EXECUTIVE_ROLE', 'MEMBERSHIP' or 'FRIEND'
+    type, // 'EXECUTIVE_ROLE' or 'MEMBERSHIP'
     role,
     societyName,
     invitedBy,
@@ -223,24 +214,6 @@ function ensureSeedRequests(email) {
       }),
       createdAt: minutesAgoISO(300),
     },
-    {
-      ...createRequest({
-        recipientEmail: email,
-        type: 'FRIEND',
-        invitedBy: 'Sofia Martinez',
-        senderEmail: 'sofia.martinez@dal.ca',
-      }),
-      createdAt: minutesAgoISO(20),
-    },
-    {
-      ...createRequest({
-        recipientEmail: email,
-        type: 'FRIEND',
-        invitedBy: 'Ethan Wright',
-        senderEmail: 'ethan.wright@dal.ca',
-      }),
-      createdAt: minutesAgoISO(180),
-    },
   ]
 
   const missing = seeds.filter(
@@ -254,25 +227,6 @@ function ensureSeedRequests(email) {
   if (missing.length > 0) {
     saveList(REQUESTS_KEY, [...requests, ...missing])
   }
-}
-
-// 'FRIENDS', 'REQUESTED' (I asked them), 'INCOMING' (they asked me) or 'NONE'
-function getFriendStatus(myEmail, otherEmail) {
-  const areFriends = loadList(FRIENDSHIPS_KEY).some(
-    (f) => f.emails.includes(myEmail) && f.emails.includes(otherEmail)
-  )
-  if (areFriends) return 'FRIENDS'
-
-  const pending = loadList(REQUESTS_KEY).filter(
-    (r) => r.type === 'FRIEND' && r.status === 'PENDING'
-  )
-  if (pending.some((r) => r.senderEmail === myEmail && r.recipientEmail === otherEmail)) {
-    return 'REQUESTED'
-  }
-  if (pending.some((r) => r.senderEmail === otherEmail && r.recipientEmail === myEmail)) {
-    return 'INCOMING'
-  }
-  return 'NONE'
 }
 
 // ==== Posts ====
@@ -431,13 +385,12 @@ export const handlers = [
     })
   }),
 
-  // ---------- Home ----------
+  // ---------- Home and posts ----------
 
-  // Home feed: GET /api/feed
-    // Home feed: GET /api/feed
+  // Home feed (public: everyone's posts): GET /api/feed
   http.get('/api/feed', async ({ request }) => {
     await delay(700)
-    const account = getCurrentAccount(request)
+    const viewerId = getCurrentUserId(request)
 
     // Sample posts from the mock students
     const samplePosts = posts.map((post) => {
@@ -453,16 +406,8 @@ export const handlers = [
       }
     })
 
-    // Real posts: mine, plus posts from my friends
-    const realPosts = account
-      ? loadList(POSTS_KEY)
-          .filter((post) => {
-            if (post.authorId === account.id) return true
-            const author = loadAccounts().find((a) => a.id === post.authorId)
-            return author && getFriendStatus(account.email, author.email) === 'FRIENDS'
-          })
-          .map((post) => toPostResponse(post, account.id))
-      : []
+    // Real posts from every DalChat user
+    const realPosts = loadList(POSTS_KEY).map((post) => toPostResponse(post, viewerId))
 
     const feed = [...samplePosts, ...realPosts].sort(
       (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
@@ -661,7 +606,7 @@ export const handlers = [
     newInvites.forEach(sendExecutiveInviteEmail)
     saveList(EXECUTIVE_INVITES_KEY, [...loadList(EXECUTIVE_INVITES_KEY), ...newInvites])
 
-    // In-app requests for people already on DalChat (shown on their Profile page)
+    // In-app requests for people already on DalChat (shown on their Requests page)
     const executiveEmails = executives.map((exec) => exec.email.trim().toLowerCase())
     const appRequests = [
       ...executives
@@ -713,6 +658,9 @@ export const handlers = [
 
     const result = loadList(CONVERSATIONS_KEY)
       .filter((c) => c.participantIds.includes(userId))
+      // Hide one-on-one chats until someone sends the first message
+      .filter((c) => c.type === 'group' || messages.some((m) => m.conversationId === c.id))
+      
       .map((c) => {
         const chatMessages = messages.filter((m) => m.conversationId === c.id)
         const last = chatMessages.at(-1)
@@ -742,6 +690,51 @@ export const handlers = [
       )
 
     return HttpResponse.json(result)
+  }),
+
+  // Open (or start) a one-on-one chat: POST /api/conversations/direct
+  http.post('/api/conversations/direct', async ({ request }) => {
+    await delay(400)
+    const userId = getCurrentUserId(request)
+    if (!userId) {
+      return HttpResponse.json({ message: 'Please log in' }, { status: 401 })
+    }
+
+    const { userId: otherId } = await request.json()
+    const other = findPersonById(otherId)
+    if (!other) {
+      return HttpResponse.json({ message: 'Student not found' }, { status: 404 })
+    }
+    if (other.id === userId) {
+      return HttpResponse.json({ message: "You can't message yourself" }, { status: 400 })
+    }
+
+    // Make sure the sample chats exist first, so they aren't skipped later
+    ensureSeedChats(userId)
+    const conversations = loadList(CONVERSATIONS_KEY)
+
+    // Reuse the existing chat with this person, if there is one
+    const existing = conversations.find(
+      (c) =>
+        c.type === 'direct' &&
+        c.participantIds.length === 2 &&
+        c.participantIds.includes(userId) &&
+        c.participantIds.includes(other.id)
+    )
+    if (existing) {
+      return HttpResponse.json({ id: existing.id })
+    }
+
+    const conversation = {
+      id: crypto.randomUUID(),
+      type: 'direct',
+      name: null,
+      participantIds: [userId, other.id],
+      lastReadAt: {},
+    }
+    saveList(CONVERSATIONS_KEY, [...conversations, conversation])
+
+    return HttpResponse.json({ id: conversation.id }, { status: 201 })
   }),
 
   // One chat and its messages: GET /api/conversations/:conversationId/messages
@@ -858,7 +851,6 @@ export const handlers = [
       return HttpResponse.json({ message: 'Please log in' }, { status: 401 })
     }
 
-
     const body = await request.json()
     const firstName = String(body.firstName ?? '').trim()
     const lastName = String(body.lastName ?? '').trim()
@@ -884,7 +876,7 @@ export const handlers = [
     return HttpResponse.json(toProfile(updated))
   }),
 
-    // My posts: GET /api/profile/posts
+  // My posts: GET /api/profile/posts
   http.get('/api/profile/posts', async ({ request }) => {
     await delay(400)
     const account = getCurrentAccount(request)
@@ -900,7 +892,7 @@ export const handlers = [
     return HttpResponse.json(myPosts)
   }),
 
-  // My pending requests: GET /api/profile/requests
+  // My pending society requests: GET /api/profile/requests
   http.get('/api/profile/requests', async ({ request }) => {
     await delay(400)
     const account = getCurrentAccount(request)
@@ -911,7 +903,12 @@ export const handlers = [
     ensureSeedRequests(account.email)
 
     const pending = loadList(REQUESTS_KEY)
-      .filter((r) => r.recipientEmail === account.email && r.status === 'PENDING')
+      .filter(
+        (r) =>
+          r.recipientEmail === account.email &&
+          r.status === 'PENDING' &&
+          r.type !== 'FRIEND' // old friend requests from before friends were removed
+      )
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
 
     return HttpResponse.json(pending)
@@ -951,77 +948,21 @@ export const handlers = [
       )
     )
 
-    // Accepting a friend request makes the two people friends
-    if (target.type === 'FRIEND' && status === 'ACCEPTED') {
-      saveList(FRIENDSHIPS_KEY, [
-        ...loadList(FRIENDSHIPS_KEY),
-        { emails: [target.senderEmail, account.email], since: new Date().toISOString() },
-      ])
-    }
-
     return HttpResponse.json({ id: target.id, status })
   }),
 
-  // ---------- Friends ----------
-
-  // Send a friend request: POST /api/friends/requests
-  http.post('/api/friends/requests', async ({ request }) => {
-    await delay(500)
-    const account = getCurrentAccount(request)
-    if (!account) {
-      return HttpResponse.json({ message: 'Please log in' }, { status: 401 })
-    }
-
-    const { userId } = await request.json()
-    const target = findPersonById(userId)
-    if (!target) {
-      return HttpResponse.json({ message: 'Student not found' }, { status: 404 })
-    }
-    if (target.email === account.email) {
-      return HttpResponse.json({ message: "You can't add yourself" }, { status: 400 })
-    }
-
-    const status = getFriendStatus(account.email, target.email)
-    if (status === 'FRIENDS') {
-      return HttpResponse.json({ message: "You're already friends" }, { status: 409 })
-    }
-    if (status === 'REQUESTED') {
-      return HttpResponse.json({ message: 'Request already sent' }, { status: 409 })
-    }
-    if (status === 'INCOMING') {
-      return HttpResponse.json(
-        { message: 'They already sent you a request. Check your Profile.' },
-        { status: 409 }
-      )
-    }
-
-    const friendRequest = createRequest({
-      recipientEmail: target.email,
-      type: 'FRIEND',
-      invitedBy: `${account.firstName} ${account.lastName}`,
-      senderEmail: account.email,
-    })
-    saveList(REQUESTS_KEY, [...loadList(REQUESTS_KEY), friendRequest])
-
-    return HttpResponse.json({ friendStatus: 'REQUESTED' }, { status: 201 })
-  }),
+  // ---------- People ----------
 
   // Search students: GET /api/users?search=something
   http.get('/api/users', async ({ request }) => {
     await delay(600)
-    const account = getCurrentAccount(request)
 
     const url = new URL(request.url)
     const search = (url.searchParams.get('search') ?? '').trim().toLowerCase()
 
-    const results = users
-      .filter((user) =>
-        [user.name, user.program].some((field) => field.toLowerCase().includes(search))
-      )
-      .map((user) => ({
-        ...user,
-        friendStatus: account ? getFriendStatus(account.email, user.email) : 'NONE',
-      }))
+    const results = users.filter((user) =>
+      [user.name, user.program].some((field) => field.toLowerCase().includes(search))
+    )
 
     return HttpResponse.json(results)
   }),

@@ -78,14 +78,22 @@ function ChatWindow({ conversationId }) {
       </header>
 
       <div className="flex-1 space-y-1 overflow-y-auto p-4">
+        {messages.length === 0 && (
+          <p className="pt-8 text-center text-sm text-gray-500">
+            No messages yet. Say hi to {conversation.name.split(' ')[0]} 👋
+          </p>
+        )}
+
         {messages.map((message, index) => {
           const previous = messages[index - 1]
           const showSender =
             isGroup && !message.isMine && previous?.sender.id !== message.sender.id
           return <MessageBubble key={message.id} message={message} showSender={showSender} />
         })}
+
         <div ref={bottomRef} />
       </div>
+      
 
       {sendMessage.isError && (
         <p className="px-4 pb-1 text-xs text-red-400">
