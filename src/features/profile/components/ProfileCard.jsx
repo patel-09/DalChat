@@ -1,7 +1,8 @@
-import { Pencil } from 'lucide-react'
+import { Link } from 'react-router'
+import { Inbox, Pencil } from 'lucide-react'
 import { getInitials } from '../../../lib/getInitials'
 
-function ProfileCard({ profile, onEdit }) {
+function ProfileCard({ profile, requestCount, onEdit }) {
   const fullName = `${profile.firstName} ${profile.lastName}`
   const details = [profile.program, profile.year].filter(Boolean).join(' · ')
 
@@ -25,13 +26,28 @@ function ProfileCard({ profile, onEdit }) {
           </p>
         </div>
 
-        <button
-          onClick={onEdit}
-          className="flex shrink-0 items-center gap-2 rounded-lg border border-gray-700 px-3 py-1.5 text-sm text-gray-200 transition hover:bg-gray-800"
-        >
-          <Pencil size={14} />
-          Edit profile
-        </button>
+        <div className="flex shrink-0 gap-2">
+          <Link
+            to="/profile/requests"
+            className="flex items-center gap-2 rounded-lg border border-gray-700 px-3 py-1.5 text-sm text-gray-200 transition hover:bg-gray-800"
+          >
+            <Inbox size={14} />
+            Requests
+            {requestCount > 0 && (
+              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-yellow-400 px-1.5 text-xs font-bold text-gray-900">
+                {requestCount}
+              </span>
+            )}
+          </Link>
+
+          <button
+            onClick={onEdit}
+            className="flex items-center gap-2 rounded-lg border border-gray-700 px-3 py-1.5 text-sm text-gray-200 transition hover:bg-gray-800"
+          >
+            <Pencil size={14} />
+            Edit profile
+          </button>
+        </div>
       </div>
     </section>
   )

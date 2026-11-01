@@ -30,7 +30,7 @@ function FriendButton({ student }) {
   if (student.friendStatus === 'INCOMING') {
     return (
       <Link
-        to="/profile"
+        to="/profile/requests"
         className={`${buttonBase} bg-yellow-400 text-gray-900 hover:bg-yellow-300`}
       >
         Respond to request

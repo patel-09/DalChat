@@ -11,7 +11,7 @@ import ChatsPage from './features/chat/pages/ChatsPage'
 import DiscoverPage from './features/discover/pages/DiscoverPage'
 import ProfilePage from './features/profile/pages/ProfilePage'
 import CreateSocietyPage from './features/clubs/pages/CreateSocietyPage'
-
+import RequestsPage from './features/profile/pages/RequestsPage'
 function App() {
   return (
     <Routes>
@@ -30,6 +30,7 @@ function App() {
           <Route path="/clubs" element={<CreateSocietyPage />} />
           <Route path="/discover" element={<DiscoverPage />} />
           <Route path="/profile" element={<ProfilePage />} />
+                    <Route path="/profile/requests" element={<RequestsPage />} />
         </Route>
       </Route>
 
