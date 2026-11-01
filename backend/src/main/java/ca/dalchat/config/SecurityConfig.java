@@ -2,6 +2,7 @@ package ca.dalchat.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -25,6 +26,9 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/health", "/api/auth/**", "/error").permitAll()
                         .anyRequest().authenticated())
+
+                // Read "Authorization: Bearer <token>" on every request and check it
+                .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))
 
                 // Turn off Spring's built-in login page and browser login popup
                 .formLogin(form -> form.disable())

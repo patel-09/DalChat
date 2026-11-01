@@ -1,5 +1,7 @@
 package ca.dalchat.auth;
 
+import ca.dalchat.auth.dto.LoginRequest;
+import ca.dalchat.auth.dto.LoginResponse;
 import ca.dalchat.auth.dto.MessageResponse;
 import ca.dalchat.auth.dto.ResendCodeRequest;
 import ca.dalchat.auth.dto.SignupRequest;
@@ -37,5 +39,10 @@ public class AuthController {
     @PostMapping("/resend-code")
     public MessageResponse resendCode(@Valid @RequestBody ResendCodeRequest request) {
         return authService.resendVerificationCode(request);
+    }
+
+    @PostMapping("/login")
+    public LoginResponse login(@Valid @RequestBody LoginRequest request) {
+        return authService.login(request);
     }
 }

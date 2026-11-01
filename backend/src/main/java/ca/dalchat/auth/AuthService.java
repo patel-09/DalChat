@@ -3,6 +3,8 @@ package ca.dalchat.auth;
 import java.time.Duration;
 import java.util.Locale;
 
+import ca.dalchat.auth.dto.LoginRequest;
+import ca.dalchat.auth.dto.LoginResponse;
 import ca.dalchat.auth.dto.MessageResponse;
 import ca.dalchat.auth.dto.ResendCodeRequest;
 import ca.dalchat.auth.dto.SignupRequest;
@@ -12,6 +14,7 @@ import ca.dalchat.common.ApiException;
 import ca.dalchat.email.EmailSender;
 import ca.dalchat.user.User;
 import ca.dalchat.user.UserRepository;
+import ca.dalchat.user.UserResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -26,15 +29,18 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final OneTimeCodeService codeService;
     private final EmailSender emailSender;
+    private final TokenService tokenService;
 
     public AuthService(UserRepository userRepository,
                        PasswordEncoder passwordEncoder,
                        OneTimeCodeService codeService,
-                       EmailSender emailSender) {
+                       EmailSender emailSender,
+                       TokenService tokenService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.codeService = codeService;
         this.emailSender = emailSender;
+        this.tokenService = tokenService;
     }
 
     // ---------- Sign up ----------
@@ -90,6 +96,24 @@ public class AuthService {
         sendVerificationCode(user);
 
         return new MessageResponse("A new code has been sent");
+    }
+
+    // ---------- Log in ----------
+
+    @Transactional(readOnly = true)
+    public LoginResponse login(LoginRequest request) {
+        // Same message for "no such email" and "wrong password",
+        // so attackers can't find out which emails have accounts
+        User user = userRepository.findByEmail(normalizeEmail(request.email()))
+                .filter(found -> passwordEncoder.matches(request.password(), found.getPasswordHash()))
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Incorrect email or password"));
+
+        if (!user.isEmailVerified()) {
+            throw new ApiException(HttpStatus.FORBIDDEN,
+                    "Please verify your email before logging in", "EMAIL_NOT_VERIFIED", null);
+        }
+
+        return new LoginResponse(tokenService.createToken(user), UserResponse.from(user));
     }
 
     // ---------- Helpers ----------
