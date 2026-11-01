@@ -7,7 +7,11 @@ import AuthLayout from '../components/AuthLayout'
 import OtpInput from '../components/OtpInput'
 import TextField from '../../../components/TextField'
 import { forgotPasswordSchema, resetPasswordSchema } from '../schemas'
-import { forgotPasswordRequest, resetPasswordRequest } from '../api'
+import {
+  forgotPasswordRequest,
+  verifyResetCodeRequest,
+  resetPasswordRequest,
+} from '../api'
 
 const CODE_LENGTH = 5
 const RESEND_COOLDOWN = 30 // seconds
@@ -20,7 +24,7 @@ function errorMessage(error, fallback) {
 }
 
 // ---- Step 1: ask for the email ----
-function EmailStep({ defaultEmail, onCodeSent }) {
+function EmailStep({ defaultEmail, notice, onCodeSent }) {
   const {
     register,
     handleSubmit,
@@ -49,6 +53,12 @@ function EmailStep({ defaultEmail, onCodeSent }) {
       subtitle="Enter your Dalhousie email and we'll send you a code to reset it."
     >
       <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
+        {notice && (
+          <p className="rounded-lg border border-yellow-400/40 bg-yellow-400/10 px-3 py-2 text-sm text-yellow-300">
+            {notice}
+          </p>
+        )}
+
         <TextField
           label="Dalhousie email"
           type="email"
@@ -79,22 +89,13 @@ function EmailStep({ defaultEmail, onCodeSent }) {
   )
 }
 
-// ---- Step 2: enter the code and a new password ----
-function ResetStep({ email, onDone, onChangeEmail }) {
+// ---- Step 2: enter the code ----
+function CodeStep({ email, onVerified, onChangeEmail }) {
   const [code, setCode] = useState(Array(CODE_LENGTH).fill(''))
-  const [codeError, setCodeError] = useState('')
+  const [isVerifying, setIsVerifying] = useState(false)
+  const [error, setError] = useState('')
   const [info, setInfo] = useState('')
   const [cooldown, setCooldown] = useState(RESEND_COOLDOWN)
-
-  const {
-    register,
-    handleSubmit,
-    setError,
-    formState: { errors, isSubmitting },
-  } = useForm({
-    resolver: zodResolver(resetPasswordSchema),
-    mode: 'onTouched',
-  })
 
   // Count the resend timer down by 1 every second
   useEffect(() => {
@@ -103,92 +104,76 @@ function ResetStep({ email, onDone, onChangeEmail }) {
     return () => clearTimeout(timer)
   }, [cooldown])
 
-  async function onSubmit(values) {
-    const fullCode = code.join('')
-    if (fullCode.length < CODE_LENGTH) {
-      setCodeError(`Enter all ${CODE_LENGTH} digits of the code`)
-      return
-    }
-
+  async function verify(fullCode) {
+    setIsVerifying(true)
+    setError('')
     setInfo('')
     try {
-      await resetPasswordRequest({ email, code: fullCode, password: values.password })
-      onDone()
-    } catch (error) {
-      const serverError = error.response?.data
-      if (serverError?.field === 'code') {
-        setCodeError(serverError.message)
-        return
-      }
-      setError('root', {
-        message: errorMessage(error, 'Something went wrong. Please try again.'),
-      })
+      const { resetToken } = await verifyResetCodeRequest({ email, code: fullCode })
+      onVerified(resetToken)
+    } catch (err) {
+      setIsVerifying(false)
+      setError(errorMessage(err, 'Something went wrong. Please try again.'))
     }
   }
 
+  function handleCodeChange(nextCode) {
+    setCode(nextCode)
+    setError('')
+    // Check automatically once all 5 boxes are filled
+    if (nextCode.every((digit) => digit !== '')) {
+      verify(nextCode.join(''))
+    }
+  }
+
+  function handleSubmit(event) {
+    event.preventDefault()
+    if (code.some((digit) => digit === '')) {
+      setError(`Enter all ${CODE_LENGTH} digits`)
+      return
+    }
+    verify(code.join(''))
+  }
+
   async function handleResend() {
-    setCodeError('')
+    setError('')
     setInfo('')
     try {
       await forgotPasswordRequest({ email })
       setCode(Array(CODE_LENGTH).fill(''))
       setInfo('A new code has been sent to your email.')
       setCooldown(RESEND_COOLDOWN)
-    } catch (error) {
-      setCodeError(errorMessage(error, 'Could not resend the code. Please try again.'))
+    } catch (err) {
+      setError(errorMessage(err, 'Could not resend the code. Please try again.'))
     }
   }
 
   return (
     <AuthLayout
-      title="Reset your password"
+      title="Check your email"
       subtitle={`If an account exists for ${email}, we've sent a 5-digit code.`}
     >
-      <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-5">
-        <div>
-          <p className="mb-2 text-sm font-medium text-gray-300">Reset code</p>
-          <OtpInput
-            value={code}
-            onChange={(next) => {
-              setCode(next)
-              setCodeError('')
-            }}
-            disabled={isSubmitting}
-            hasError={Boolean(codeError)}
-          />
-          {codeError && <p className="mt-2 text-center text-sm text-red-400">{codeError}</p>}
-        </div>
-
-        <TextField
-          label="New password"
-          type="password"
-          placeholder="At least 8 characters"
-          autoComplete="new-password"
-          error={errors.password}
-          {...register('password')}
-        />
-        <TextField
-          label="Confirm new password"
-          type="password"
-          placeholder="Type it again"
-          autoComplete="new-password"
-          error={errors.confirmPassword}
-          {...register('confirmPassword')}
+      <form onSubmit={handleSubmit} className="space-y-5">
+        <OtpInput
+          value={code}
+          onChange={handleCodeChange}
+          disabled={isVerifying}
+          hasError={Boolean(error)}
         />
 
+        {error && (
+          <p className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-center text-sm text-red-400">
+            {error}
+          </p>
+        )}
         {info && (
           <p className="rounded-lg border border-green-500/40 bg-green-500/10 px-3 py-2 text-center text-sm text-green-400">
             {info}
           </p>
         )}
-        {errors.root && (
-          <p className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-400">
-            {errors.root.message}
-          </p>
-        )}
 
-        <button type="submit" disabled={isSubmitting} className={primaryButton}>
-          {isSubmitting ? 'Updating password…' : 'Reset password'}
+        <button type="submit" disabled={isVerifying} className={primaryButton}>
+          {isVerifying ? 'Checking code…' : 'Verify code'}
         </button>
       </form>
 
@@ -215,7 +200,74 @@ function ResetStep({ email, onDone, onChangeEmail }) {
   )
 }
 
-// ---- Step 3: success ----
+// ---- Step 3: choose a new password ----
+function PasswordStep({ email, resetToken, onDone, onSessionExpired }) {
+  const {
+    register,
+    handleSubmit,
+    setError,
+    formState: { errors, isSubmitting },
+  } = useForm({
+    resolver: zodResolver(resetPasswordSchema),
+    mode: 'onTouched',
+  })
+
+  async function onSubmit(values) {
+    try {
+      await resetPasswordRequest({ email, resetToken, password: values.password })
+      onDone()
+    } catch (error) {
+      if (error.response?.data?.code === 'RESET_SESSION_EXPIRED') {
+        onSessionExpired()
+        return
+      }
+      setError('root', {
+        message: errorMessage(error, 'Something went wrong. Please try again.'),
+      })
+    }
+  }
+
+  return (
+    <AuthLayout title="Choose a new password" subtitle={`For ${email}`}>
+      <p className="mb-5 flex items-center gap-2 text-sm text-green-400">
+        <CheckCircle2 size={16} />
+        Code verified
+      </p>
+
+      <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
+        <TextField
+          label="New password"
+          type="password"
+          placeholder="At least 8 characters"
+          autoComplete="new-password"
+          autoFocus
+          error={errors.password}
+          {...register('password')}
+        />
+        <TextField
+          label="Confirm new password"
+          type="password"
+          placeholder="Type it again"
+          autoComplete="new-password"
+          error={errors.confirmPassword}
+          {...register('confirmPassword')}
+        />
+
+        {errors.root && (
+          <p className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+            {errors.root.message}
+          </p>
+        )}
+
+        <button type="submit" disabled={isSubmitting} className={primaryButton}>
+          {isSubmitting ? 'Updating password…' : 'Reset password'}
+        </button>
+      </form>
+    </AuthLayout>
+  )
+}
+
+// ---- Step 4: success ----
 function DoneStep() {
   const navigate = useNavigate()
 
@@ -238,18 +290,38 @@ function DoneStep() {
   )
 }
 
-// ---- The page: switches between the three steps ----
+// ---- The page: switches between the four steps ----
 function ForgotPasswordPage() {
   const location = useLocation()
-  const [step, setStep] = useState('email') // 'email' | 'reset' | 'done'
+  const [step, setStep] = useState('email') // 'email' | 'code' | 'password' | 'done'
   const [email, setEmail] = useState(location.state?.email ?? '')
+  const [resetToken, setResetToken] = useState('')
+  const [notice, setNotice] = useState('')
 
-  if (step === 'reset') {
+  if (step === 'code') {
     return (
-      <ResetStep
+      <CodeStep
         email={email}
-        onDone={() => setStep('done')}
+        onVerified={(token) => {
+          setResetToken(token)
+          setStep('password')
+        }}
         onChangeEmail={() => setStep('email')}
+      />
+    )
+  }
+
+  if (step === 'password') {
+    return (
+      <PasswordStep
+        email={email}
+        resetToken={resetToken}
+        onDone={() => setStep('done')}
+        onSessionExpired={() => {
+          setResetToken('')
+          setNotice('Your reset session expired. Please request a new code.')
+          setStep('email')
+        }}
       />
     )
   }
@@ -261,9 +333,11 @@ function ForgotPasswordPage() {
   return (
     <EmailStep
       defaultEmail={email}
+      notice={notice}
       onCodeSent={(sentTo) => {
         setEmail(sentTo)
-        setStep('reset')
+        setNotice('')
+        setStep('code')
       }}
     />
   )

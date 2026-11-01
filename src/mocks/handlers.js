@@ -15,6 +15,7 @@ const POSTS_KEY = 'dalchat-mock-posts'
 const CODE_LIFETIME_MS = 10 * 60 * 1000 // 10 minutes
 const INVITE_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 const MAX_RESET_ATTEMPTS = 5
+const RESET_TOKEN_LIFETIME_MS = 15 * 60 * 1000 // 15 minutes
 
 function loadList(key) {
   try {
@@ -427,29 +428,29 @@ export const handlers = [
     })
   }),
 
-  // Reset password: POST /api/auth/reset-password
-  http.post('/api/auth/reset-password', async ({ request }) => {
-    await delay(800)
-    const { email, code, password } = await request.json()
+   // Check a reset code: POST /api/auth/verify-reset-code
+  http.post('/api/auth/verify-reset-code', async ({ request }) => {
+    await delay(700)
+    const { email, code } = await request.json()
     const target = String(email ?? '').trim().toLowerCase()
     const accounts = loadAccounts()
     const account = accounts.find((a) => a.email === target)
 
     if (!account || !account.resetCode) {
       return HttpResponse.json(
-        { field: 'code', message: 'This code is invalid or has expired. Request a new one.' },
+        { message: 'This code is invalid or has expired. Request a new one.' },
         { status: 400 }
       )
     }
     if (Date.now() > account.resetCodeExpiresAt) {
       return HttpResponse.json(
-        { field: 'code', message: 'This code has expired. Request a new one.' },
+        { message: 'This code has expired. Request a new one.' },
         { status: 410 }
       )
     }
     if ((account.resetAttempts ?? 0) >= MAX_RESET_ATTEMPTS) {
       return HttpResponse.json(
-        { field: 'code', message: 'Too many wrong attempts. Request a new code.' },
+        { message: 'Too many wrong attempts. Request a new code.' },
         { status: 429 }
       )
     }
@@ -460,7 +461,52 @@ export const handlers = [
         )
       )
       return HttpResponse.json(
-        { field: 'code', message: 'Incorrect code. Please try again.' },
+        { message: 'Incorrect code. Please try again.' },
+        { status: 400 }
+      )
+    }
+
+    // Correct code: use it up, and hand out a one-time reset token instead
+    const resetToken = crypto.randomUUID()
+    saveAccounts(
+      accounts.map((a) =>
+        a.email === target
+          ? {
+              ...a,
+              resetCode: null,
+              resetCodeExpiresAt: null,
+              resetAttempts: 0,
+              resetToken,
+              resetTokenExpiresAt: Date.now() + RESET_TOKEN_LIFETIME_MS,
+            }
+          : a
+      )
+    )
+
+    return HttpResponse.json({ resetToken })
+  }),
+
+  // Set the new password: POST /api/auth/reset-password
+  http.post('/api/auth/reset-password', async ({ request }) => {
+    await delay(800)
+    const { email, resetToken, password } = await request.json()
+    const target = String(email ?? '').trim().toLowerCase()
+    const accounts = loadAccounts()
+    const account = accounts.find((a) => a.email === target)
+
+    // Only someone who passed the code step has a valid token
+    const sessionIsValid =
+      account &&
+      account.resetToken &&
+      account.resetToken === resetToken &&
+      Date.now() <= account.resetTokenExpiresAt
+
+    if (!sessionIsValid) {
+      return HttpResponse.json(
+        {
+          code: 'RESET_SESSION_EXPIRED',
+          message: 'Your reset session has expired. Please start again.',
+        },
         { status: 400 }
       )
     }
@@ -487,9 +533,8 @@ export const handlers = [
               verified: true, // receiving the code proves they own this email
               verificationCode: null,
               codeExpiresAt: null,
-              resetCode: null,
-              resetCodeExpiresAt: null,
-              resetAttempts: 0,
+              resetToken: null,
+              resetTokenExpiresAt: null,
             }
           : a
       )

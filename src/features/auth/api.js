@@ -19,3 +19,18 @@ export async function resendCodeRequest(details) {
   const response = await apiClient.post('/auth/resend-code', details)
   return response.data
 }
+
+export async function forgotPasswordRequest(details) {
+  const response = await apiClient.post('/auth/forgot-password', details)
+  return response.data
+}
+
+export async function verifyResetCodeRequest(details) {
+  const response = await apiClient.post('/auth/verify-reset-code', details)
+  return response.data
+}
+
+export async function resetPasswordRequest(details) {
+  const response = await apiClient.post('/auth/reset-password', details)
+  return response.data
+}

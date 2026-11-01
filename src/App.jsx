@@ -21,6 +21,7 @@ function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signup" element={<SignupPage />} />
       <Route path="/verify-email" element={<VerifyEmailPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
 
       {/* Logged-in pages */}
       <Route element={<ProtectedRoute />}>
@@ -32,7 +33,6 @@ function App() {
           <Route path="/discover" element={<DiscoverPage />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/profile/requests" element={<RequestsPage />} />
-          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         </Route>
       </Route>
 
